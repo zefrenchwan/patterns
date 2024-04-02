@@ -8,42 +8,7 @@ import (
 	"github.com/google/uuid"
 )
 
-type Element interface {
-	// Id returns the (unique) id of the element
-	Id()
-
-	// ActivePeriod returns the period the entity was active during
-	ActivePeriod() Period
-	// AddActivePeriod flags given period as active
-	AddActivePeriod(Period) error
-	// RemoveActivePeriod flags given period as inactive
-	RemoveActivePeriod(Period)
-	// SetActivePeriod forces the activity for that element
-	SetActivePeriod(Period) error
-	// IsActiveDuring returns true if the element is active at least one moment during the period
-	IsActiveDuring(Period) bool
-
-	// Traits returns all the traits an element implements
-	Traits() []string
-	// AddTrait adds a trait if not already present
-	AddTrait(string) error
-	// RemoveTrait removes a trait to an element
-	RemoveTrait(string)
-
-	// ContainsAttribute returns true if the element is not nil and contains a value for that attribute
-	ContainsAttribute(string) bool
-	// Attributes returns all the attributes of the element
-	Attributes() []string
-	// SetValue sets the value for that attribute during the full period
-	SetValue(string, string) error
-	// AddValue adds to the attribute and value the period
-	AddValue(string, string, Period) error
-	// ValuesForAttribute returns the value of the attribute during the period activity
-	ValuesForAttribute(attribute string) ([]string, error)
-	// PeriodValuesForAttribute returns the values and matching period for a given attribute
-	PeriodValuesForAttribute(attribute string) (map[string]Period, error)
-}
-
+// An entity is an element that represent real world objects, not relations
 type Entity struct {
 	// id of the entity, should be unique
 	id string
