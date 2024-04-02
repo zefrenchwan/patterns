@@ -80,6 +80,32 @@ func (p *Period) IsEmptyPeriod() bool {
 	return p == nil || len(p.elements) == 0 || p.elements[0].IsEmpty()
 }
 
+// IsFullPeriod returns true if the period is the full time interval
+func (p *Period) IsFullPeriod() bool {
+	return p != nil && len(p.elements) == 1 && p.elements[0].IsFull()
+}
+
+func (p *Period) IsSameAs(other Period) bool {
+	if p == nil {
+		return false
+	} else if len(p.elements) != len(other.elements) {
+		return false
+	} else if len(p.elements) == 0 {
+		return true
+	}
+
+	slices.SortFunc(p.elements, periodComparator.CompareInterval)
+	slices.SortFunc(other.elements, periodComparator.CompareInterval)
+
+	for i := 0; i < len(p.elements); i++ {
+		if periodComparator.CompareInterval(p.elements[i], other.elements[i]) != 0 {
+			return false
+		}
+	}
+
+	return true
+}
+
 // AsIntervals returns the period as a sorted set of separated intervals
 func (p *Period) AsIntervals() []Interval[time.Time] {
 	if p == nil {
