@@ -120,3 +120,59 @@ func TestTimeValuesPeriodChange(t *testing.T) {
 		t.Error("intervals test failed")
 	}
 }
+
+func TestPeriodForAttributes(t *testing.T) {
+	instance := patterns.NewTimeValues()
+
+	now := time.Now().UTC()
+	before := now.AddDate(-1, 0, 0)
+	after := now.AddDate(1, 0, 0)
+
+	beforeInterval := patterns.NewRightInfiniteTimeInterval(before, false)
+	beforePeriod := patterns.NewPeriod(beforeInterval)
+	nowInterval := patterns.NewRightInfiniteTimeInterval(now, false)
+	nowPeriod := patterns.NewPeriod(nowInterval)
+	afterInterval := patterns.NewRightInfiniteTimeInterval(after, false)
+	afterPeriod := patterns.NewPeriod(afterInterval)
+	expectedIntervalValueBefore, _ := patterns.NewFiniteTimeInterval(before, now, false, true)
+	expectedPeriodValueBefore := patterns.NewPeriod(expectedIntervalValueBefore)
+
+	// afterPeriod should be the period for value since after, before of set and not add
+	// BUT, between second and third line, value since before should reduce to (before, now)
+	instance.SetPeriodForValue("attr", "value since before", beforePeriod)
+	instance.SetPeriodForValue("attr", "value since after", nowPeriod)
+	instance.SetPeriodForValue("attr", "value since after", afterPeriod)
+
+	mapValuePeriods, errPeriods := instance.PeriodsForAttribute("attr")
+	if errPeriods != nil {
+		t.Errorf("unexpected error %s", errPeriods.Error())
+	} else if len(mapValuePeriods) != 2 {
+		t.Error("missing value, both should be here")
+	} else if afterPeriodResult := mapValuePeriods["value since after"]; !afterPeriod.IsSameAs(afterPeriodResult) {
+		t.Error("forcing value failure")
+	} else if beforePeriodResult := mapValuePeriods["value since before"]; !expectedPeriodValueBefore.IsSameAs(beforePeriodResult) {
+		t.Error("removeing other periods failure")
+	}
+}
+
+func TestRemovePeriodInTimeValue(t *testing.T) {
+	instance := patterns.NewTimeValues()
+
+	now := time.Now().UTC()
+	after := now.AddDate(1, 0, 0)
+	expectedInterval := patterns.NewLeftInfiniteTimeInterval(now, true)
+	afterInterval := patterns.NewRightInfiniteTimeInterval(after, false)
+
+	instance.SetValue("attr", "default value")
+	instance.SetPeriodForValue("attr", "after value won't appear", patterns.NewPeriod(afterInterval))
+	instance.RemovePeriodForAttribute("attr", patterns.NewPeriod(patterns.NewRightInfiniteTimeInterval(now, false)))
+
+	valueIntervalsMap, _ := instance.TimeValuesForAttribute("attr")
+	if len(valueIntervalsMap) != 1 {
+		t.Error("keeping old value")
+	} else if intervals := valueIntervalsMap["default value"]; len(intervals) != 1 {
+		t.Error("intervals cut failure")
+	} else if patterns.TimeIntervalsCompare(expectedInterval, intervals[0]) != 0 {
+		t.Error("removing part of interval failed")
+	}
+}

@@ -33,6 +33,11 @@ type Element interface {
 	SetValue(string, string) error
 	// AddValue adds to the attribute and value the period
 	AddValue(string, string, Period) error
+	// SetPeriodForValue sets the value and the period for that attribute.
+	// AddValue adds the period for that value to existing period, but setPeriodForValue just forces given period
+	SetPeriodForValue(string, string, Period) error
+	// RemovePeriodForAttribute just removes period, no matter the value, for that attribute
+	RemovePeriodForAttribute(string, Period) error
 	// ValuesForAttribute returns the value of the attribute during the period activity
 	ValuesForAttribute(attribute string) ([]string, error)
 	// PeriodValuesForAttribute returns the values and matching period for a given attribute

@@ -127,6 +127,24 @@ func (e *Entity) AddValue(attribute string, value string, validity Period) error
 	return e.content.AddValue(attribute, value, validity)
 }
 
+// SetPeriodForValue sets the value and the period for that attribute.
+func (e *Entity) SetPeriodForValue(attribute string, value string, period Period) error {
+	if e == nil {
+		return errors.New("nil instance")
+	}
+
+	return e.content.SetPeriodForValue(attribute, value, period)
+}
+
+// RemovePeriodForAttribute just removes period, no matter the value, for that attribute
+func (e *Entity) RemovePeriodForAttribute(attribute string, period Period) error {
+	if e == nil {
+		return errors.New("nil instance")
+	}
+
+	return e.content.RemovePeriodForAttribute(attribute, period)
+}
+
 // ValuesForAttribute returns the values for an attribute as a sorted slice during the activity of the entity.
 // For instance, if activity is [now, +oo[ and values are set for ] -oo, now - 1 day] , then it returns nil
 func (e *Entity) ValuesForAttribute(attribute string) ([]string, error) {
@@ -143,7 +161,7 @@ func (e *Entity) PeriodValuesForAttribute(attribute string) (map[string]Period, 
 		return nil, errors.New("nil entity")
 	}
 
-	return e.content.periodsForAttribute(attribute)
+	return e.content.PeriodsForAttribute(attribute)
 }
 
 // ActivePeriod returns the period the entity was active during

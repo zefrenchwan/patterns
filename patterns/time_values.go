@@ -190,6 +190,96 @@ func (a *ActiveTimeValues) AddValue(attribute string, value string, validity Per
 	return a.values.AddValue(attribute, value, validity)
 }
 
+// SetPeriodForValue sets the value and the period for that attribute.
+func (t TimeValues) SetPeriodForValue(attribute string, value string, period Period) error {
+	if t == nil {
+		return errors.New("nil values")
+	} else if !period.IsEmptyPeriod() {
+		copyPeriod := NewPeriodCopy(period)
+
+		// no other value, just insert
+		if t[attribute] == nil {
+			t[attribute] = make(map[string]*Period)
+			t[attribute][value] = &copyPeriod
+			return nil
+		} else if len(t[attribute]) == 0 {
+			t[attribute][value] = &copyPeriod
+			return nil
+		}
+
+		// Possible other values, clean others and then insert.
+		// remove period to other values and clean accordingly
+		valuesToClean := make([]string, 0)
+		for otherValue, otherPeriod := range t[attribute] {
+			otherPeriod.Remove(period)
+			if otherPeriod.IsEmptyPeriod() {
+				valuesToClean = append(valuesToClean, otherValue)
+			}
+		}
+
+		for _, valueToClean := range valuesToClean {
+			delete(t[attribute], valueToClean)
+		}
+
+		// and finally, insert it
+		t[attribute][value] = &copyPeriod
+	} else if _, found := t[attribute]; found {
+		// period is empty, delete the attribute
+		delete(t[attribute], value)
+	}
+
+	return nil
+}
+
+// SetPeriodForValue sets the value and the period for that attribute.
+func (a *ActiveTimeValues) SetPeriodForValue(attribute string, value string, period Period) error {
+	if a == nil {
+		return errors.New("nil active value")
+	} else if a.values == nil {
+		return nil
+	}
+
+	return a.SetPeriodForValue(attribute, value, period)
+}
+
+// RemovePeriodForAttribute just removes period, no matter the value, for that attribute
+func (t TimeValues) RemovePeriodForAttribute(attribute string, period Period) error {
+	if t == nil {
+		return errors.New("nil values")
+	} else if period.IsEmptyPeriod() {
+		return nil
+	}
+
+	if t[attribute] == nil {
+		return nil
+	}
+
+	elementsToDelete := make([]string, 0)
+	for value, valuePeriod := range t[attribute] {
+		valuePeriod.Remove(period)
+		if valuePeriod.IsEmptyPeriod() {
+			elementsToDelete = append(elementsToDelete, value)
+		}
+	}
+
+	for _, elementToDelete := range elementsToDelete {
+		delete(t[attribute], elementToDelete)
+	}
+
+	return nil
+}
+
+// RemovePeriodForAttribute just removes period, no matter the value, for that attribute
+func (a *ActiveTimeValues) RemovePeriodForAttribute(attribute string, period Period) error {
+	if a == nil {
+		return errors.New("nil active value")
+	} else if a.values == nil {
+		return nil
+	}
+
+	return a.RemovePeriodForAttribute(attribute, period)
+}
+
 // ValuesForAttribute returns the values for an attribute as a sorted slice
 func (i TimeValues) ValuesForAttribute(attribute string) ([]string, error) {
 	if i == nil {
@@ -219,7 +309,7 @@ func (a *ActiveTimeValues) ValuesForAttribute(attribute string) ([]string, error
 		return nil, errors.New("nil active value")
 	}
 
-	allValues, errValues := a.periodsForAttribute(attribute)
+	allValues, errValues := a.PeriodsForAttribute(attribute)
 	if errValues != nil {
 		return nil, errValues
 	}
@@ -270,7 +360,7 @@ func (a *ActiveTimeValues) TimeValuesForAttribute(attribute string) (map[string]
 		return nil, errors.New("nil values")
 	}
 
-	valuePeriodMap, errPeriods := a.periodsForAttribute(attribute)
+	valuePeriodMap, errPeriods := a.PeriodsForAttribute(attribute)
 	if errPeriods != nil {
 		return nil, errPeriods
 	}
@@ -290,9 +380,34 @@ func (a *ActiveTimeValues) TimeValuesForAttribute(attribute string) (map[string]
 	return result, nil
 }
 
-// periodsForAttribute returns, for an attribute, each value and its active period.
+// PeriodsForAttribute returns, for an attribute, each value and its active period.
+func (a TimeValues) PeriodsForAttribute(attribute string) (map[string]Period, error) {
+	if a == nil {
+		return nil, errors.New("nil values")
+	} else if attributeValues, found := a[attribute]; !found {
+		return nil, nil
+	} else if len(attributeValues) == 0 {
+		return nil, nil
+	} else {
+		result := make(map[string]Period)
+
+		for value, period := range attributeValues {
+			// should not happen
+			if period == nil {
+				continue
+			}
+
+			copyPeriod := NewPeriodCopy(*period)
+			result[value] = copyPeriod
+		}
+
+		return result, nil
+	}
+}
+
+// PeriodsForAttribute returns, for an attribute, each value and its active period.
 // Its active period is the intersection of the matching period AND the current activity
-func (a *ActiveTimeValues) periodsForAttribute(attribute string) (map[string]Period, error) {
+func (a *ActiveTimeValues) PeriodsForAttribute(attribute string) (map[string]Period, error) {
 	if a == nil {
 		return nil, errors.New("nil active value")
 	} else if a.values == nil {
