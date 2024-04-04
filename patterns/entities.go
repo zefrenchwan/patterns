@@ -8,7 +8,7 @@ import (
 	"github.com/google/uuid"
 )
 
-// An entity is an element that represent real world objects, not relations
+// Entity represents real world objects, not relations
 type Entity struct {
 	// id of the entity, should be unique
 	id string
