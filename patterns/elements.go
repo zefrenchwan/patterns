@@ -7,7 +7,7 @@ type Element interface {
 	// Id returns the (unique) id of the element
 	Id()
 
-	// ActivePeriod returns the period the entity was active during
+	// ActivePeriod returns the period the element was active during
 	ActivePeriod() Period
 	// AddActivePeriod flags given period as active
 	AddActivePeriod(Period) error
@@ -24,6 +24,11 @@ type Element interface {
 	AddTrait(string) error
 	// RemoveTrait removes a trait to an element
 	RemoveTrait(string)
+}
+
+// FormalInstance defines an element with time dependent attributes
+type FormalInstance interface {
+	Element
 
 	// ContainsAttribute returns true if the element is not nil and contains a value for that attribute
 	ContainsAttribute(string) bool
@@ -42,4 +47,17 @@ type Element interface {
 	ValuesForAttribute(attribute string) ([]string, error)
 	// PeriodValuesForAttribute returns the values and matching period for a given attribute
 	PeriodValuesForAttribute(attribute string) (map[string]Period, error)
+}
+
+type FormalRelation interface {
+	Element
+
+	// GetSubjets returns the subjects of the relation, nil for nil, empty for no subject
+	GetSubjects() []string
+	// GetValuesPerRole returns the values per role, including the subject, for that relation
+	GetValuesPerRole() map[string][]string
+	// SetValueForRole sets the value for the role, no matter previous value
+	SetValueForRole(role string, linkedId string) error
+	// SetValuesForRole sets the values for a given role
+	SetValuesForRole(role string, linkedIds []string) error
 }

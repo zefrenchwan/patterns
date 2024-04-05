@@ -3,7 +3,6 @@ package patterns
 import (
 	"errors"
 	"slices"
-	"strings"
 
 	"github.com/google/uuid"
 )
@@ -58,7 +57,12 @@ func (t *Entity) AddTrait(trait string) error {
 		return errors.New("nil entity")
 	}
 
-	t.traits = append(t.traits, trait)
+	if len(t.traits) == 0 {
+		t.traits = append(t.traits, trait)
+	} else if !slices.Contains(t.traits, trait) {
+		t.traits = append(t.traits, trait)
+	}
+
 	return nil
 }
 
@@ -68,7 +72,7 @@ func (t *Entity) Traits() []string {
 	if t == nil {
 		return nil
 	} else if len(t.traits) == 0 {
-		return nil
+		return []string{}
 	}
 
 	values := make([]string, len(t.traits))
@@ -81,11 +85,12 @@ func (t *Entity) Traits() []string {
 func (t *Entity) RemoveTrait(key string) {
 	if t == nil {
 		return
+	} else if len(t.traits) == 0 {
+		return
 	}
 
-	if !slices.ContainsFunc(t.traits, func(a string) bool { return strings.EqualFold(a, key) }) {
-		t.traits = append(t.traits, key)
-	}
+	deleteFn := func(element string) bool { return element == key }
+	t.traits = slices.DeleteFunc(t.traits, deleteFn)
 }
 
 // ContainsAttribute returns true if receiver is not nil and it contains a non nil entry with that key
