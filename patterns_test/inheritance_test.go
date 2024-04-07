@@ -23,3 +23,22 @@ func TestInheritanceUsingDictionary(t *testing.T) {
 		t.Fail()
 	}
 }
+
+func TestRelationInheritanceUsingDictionary(t *testing.T) {
+	d := patterns.NewDictionary()
+	d.AddRelationWithObject("couple", []string{"Person"}, []string{"Person"})
+	d.AddRelationWithObject("married", []string{"Person"}, []string{"Person"})
+	d.AddRelationLink("married", "couple")
+
+	if d.GetDirectSubRelations("couple") == nil {
+		t.Error("couple exists, should return empty")
+	} else if vsup := d.GetDirectSuperRelations("married"); len(vsup) != 1 {
+		t.Fail()
+	} else if vsup[0] != "couple" {
+		t.Error("inheritance failure for relation")
+	} else if vsub := d.GetDirectSubRelations("couple"); len(vsub) != 1 {
+		t.Fail()
+	} else if vsub[0] != "married" {
+		t.Error("inheritance failure for relation")
+	}
+}
