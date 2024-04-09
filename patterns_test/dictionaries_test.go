@@ -27,3 +27,31 @@ func TestDictionary(t *testing.T) {
 		t.Error("objects should be sorted slices of values")
 	}
 }
+
+func TestDictionaryMerge(t *testing.T) {
+	a := patterns.NewDictionary()
+	b := patterns.NewDictionary()
+
+	a.AddRelationWithObject("couple", []string{"Person"}, []string{"Person"})
+	b.AddRelationWithObject("married", []string{"Person"}, []string{"Person"})
+	a.AddTrait("Man")
+	b.AddTrait("Woman")
+
+	errMerge := a.Merge(b)
+	if errMerge != nil {
+		t.Fail()
+	}
+
+	if !a.HasEntityTrait("Man") {
+		t.Fail()
+	} else if !a.HasRelationTrait("couple") {
+		t.Fail()
+	} else if !b.HasRelationTrait("married") {
+		t.Fail()
+	} else if !a.HasEntityTrait("Person") {
+		t.Fail()
+	} else if !a.HasEntityTrait("Woman") {
+		t.Fail()
+	}
+
+}

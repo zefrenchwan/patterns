@@ -16,6 +16,36 @@ type traitsInformation struct {
 	superTraits []string
 }
 
+// appendTraitsInformation adds all the traits informations to make one single traitInformation
+// If result is empty, it returns nil
+func appendTraitsInformation(values ...*traitsInformation) *traitsInformation {
+	var result *traitsInformation
+	for _, value := range values {
+		if value == nil {
+			continue
+		}
+
+		if result == nil {
+			result = new(traitsInformation)
+		}
+
+		result.subTraits = append(result.subTraits, value.subTraits...)
+		result.superTraits = append(result.superTraits, value.superTraits...)
+
+		if len(result.subTraits) != 0 {
+			slices.Sort(result.subTraits)
+			result.subTraits = slices.Compact(result.subTraits)
+		}
+
+		if len(result.superTraits) != 0 {
+			slices.Sort(result.superTraits)
+			result.superTraits = slices.Compact(result.superTraits)
+		}
+	}
+
+	return result
+}
+
 // relationsInformation defines meta data for a relation: accepted types of parameters, sub and super relations
 type relationsInformation struct {
 	// subRelations of the relation.
@@ -27,6 +57,40 @@ type relationsInformation struct {
 	// traitsRoles links role with possible traits (superclasses only).
 	// For instance, person knows would accept object roles to be animal, places, etc
 	traitsRoles map[string][]string
+}
+
+// appendRelationsInformation append relations information
+func appendRelationsInformation(values ...*relationsInformation) *relationsInformation {
+	var result *relationsInformation
+
+	for _, value := range values {
+		if value == nil {
+			continue
+		}
+
+		if result == nil {
+			result = new(relationsInformation)
+			result.traitsRoles = make(map[string][]string)
+		}
+
+		result.subRelations = append(result.subRelations, value.subRelations...)
+		result.superRelations = append(result.superRelations, value.superRelations...)
+
+		for k, v := range value.traitsRoles {
+			if len(v) == 0 {
+				continue
+			} else if current, found := result.traitsRoles[k]; !found || current == nil {
+				result.traitsRoles[k] = slices.Clone(v)
+			} else {
+				result.traitsRoles[k] = append(result.traitsRoles[k], v...)
+			}
+
+			slices.Sort(result.traitsRoles[k])
+			result.traitsRoles[k] = slices.Compact(result.traitsRoles[k])
+		}
+	}
+
+	return result
 }
 
 // Dictionary contains all the meta data about relations and traits.
@@ -47,9 +111,40 @@ func NewDictionary() Dictionary {
 	}
 }
 
+// HasRelationTrait returns true if the dictionary has a relation trait named value
+func (d *Dictionary) HasRelationTrait(value string) bool {
+	if d == nil || d.traitsDictionary == nil {
+		return false
+	}
+
+	_, found := d.relationsDictionary[value]
+	return found
+}
+
+// HasEntityTrait returns true if the dictionary has a trait named value
+func (d *Dictionary) HasEntityTrait(value string) bool {
+	if d == nil || d.traitsDictionary == nil {
+		return false
+	}
+
+	_, found := d.traitsDictionary[value]
+	return found
+}
+
+// AddTrait appends a trait
+func (d *Dictionary) AddTrait(trait string) error {
+	if d == nil {
+		return errors.New("nil dictionary")
+	} else if _, found := d.traitsDictionary[trait]; !found {
+		d.traitsDictionary[trait] = nil
+	}
+
+	return nil
+}
+
 // AddTraitsLink links a trait to a super trait.
 // Example of call: d.AddTraitsLink("cat", "animal")
-// If traits did not already exist, they are
+// If traits did not already exist, append in dictionary
 func (d *Dictionary) AddTraitsLink(currentTrait string, superTrait string) error {
 	if d == nil {
 		return errors.New("nil dictionary")
@@ -112,7 +207,7 @@ func (d *Dictionary) AddRelation(trait string, roleTraitsMap map[string][]string
 	allTraits = slices.Compact(allTraits)
 
 	for _, currentTrait := range allTraits {
-		if d.traitsDictionary[currentTrait] == nil {
+		if _, found := d.traitsDictionary[currentTrait]; !found {
 			d.traitsDictionary[currentTrait] = &traitsInformation{
 				subTraits:   make([]string, 0),
 				superTraits: make([]string, 0),
@@ -342,4 +437,35 @@ func (d *Dictionary) GetRelationRoles(trait string) map[string][]string {
 	}
 
 	return result
+}
+
+// Merge adds all the values from other to current dictionary
+func (d *Dictionary) Merge(other Dictionary) error {
+	if d == nil {
+		return errors.New("nil dictionary")
+	} else if d.relationsDictionary == nil {
+		d.relationsDictionary = make(map[string]*relationsInformation)
+	}
+
+	for k, v := range other.relationsDictionary {
+		d.relationsDictionary[k] = appendRelationsInformation(d.relationsDictionary[k], v)
+	}
+
+	if len(d.relationsDictionary) == 0 {
+		d.relationsDictionary = nil
+	}
+
+	if d.traitsDictionary == nil {
+		d.traitsDictionary = make(map[string]*traitsInformation)
+	}
+
+	for k, v := range other.traitsDictionary {
+		d.traitsDictionary[k] = appendTraitsInformation(d.traitsDictionary[k], v)
+	}
+
+	if len(d.traitsDictionary) == 0 {
+		d.traitsDictionary = nil
+	}
+
+	return nil
 }
