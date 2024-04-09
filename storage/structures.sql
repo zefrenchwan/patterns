@@ -3,7 +3,8 @@
 drop table if exists spat.entity_trait;
 drop table if exists spat.relation_trait;
 drop table if exists spat.relation_role;
-drop table if exists spat.relations; 
+drop table if exists spat.relations;
+drop table if exists spat.entity_attributes;
 drop table if exists spat.entities;
 drop table if exists spat.mdlinks;
 drop table if exists spat.mdroles;
@@ -42,6 +43,8 @@ create table spat.dictionaries (
 	dictionary_id bigserial primary key
 );
 
+-- in a dictionary, a mdlink defines an entry as the trait / supertrait, 
+-- both for relation and entities (depending on the reftype)
 create table spat.mdlinks (
 	dictionary_id bigint references spat.dictionaries(dictionary_id),
 	reftype int references spat.reftypes(reftype_id),
@@ -49,6 +52,7 @@ create table spat.mdlinks (
 	supertrait_id bigint references spat.traits(trait_id)
 );
 
+-- in a dictionary, for a relation metadata, an entry defines all possible traits given a role
 create table spat.mdroles (
 	dictionary_id bigint references spat.dictionaries(dictionary_id),
 	relation_trait_id bigint references spat.traits(trait_id),
@@ -57,26 +61,41 @@ create table spat.mdroles (
 );
 
 
+-- general table for entities, to be linked to its traits and attributes
 create table spat.entities (
 	entity_id bigserial primary key, 
 	entity_period bigint references spat.periods(period_id)
 );
 
+-- links an entity to its traits
 create table spat.entity_trait (
 	entity_id bigint references spat.entities(entity_id),
 	trait_id bigint references spat.traits(trait_id)
 );
 
-create table spat.relations (
-	relation_id bigserial primary key, 
-	realtion_activity bigint references spat.periods(period_id)
+-- given an entity, an entry for an attribute AND its value
+create table spat.entity_attributes (
+	attribute_id bigserial primary key,
+	entity_id bigint references spat.entities(entity_id),
+	attribute_name text not null, 
+	attribute_value text not null, 
+	period_id bigint references spat.periods(period_id)
 );
 
+-- defines a relation
+create table spat.relations (
+	relation_id bigserial primary key, 
+    -- activity defines when the relation is true
+	relation_activity bigint references spat.periods(period_id)
+);
+
+-- links a relation to its traits
 create table spat.relation_trait (
 	relation_id bigint references spat.relations(relation_id), 
 	trait_id bigint references spat.traits(trait_id)
 );
 
+-- given a relation, a line in this table defines all the elements with a given role
 create table spat.relation_role (
 	relation_role_id bigserial primary key, 
 	relation_id bigint references spat.relations(relation_id),

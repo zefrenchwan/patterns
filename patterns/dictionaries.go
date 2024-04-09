@@ -29,7 +29,9 @@ type relationsInformation struct {
 	traitsRoles map[string][]string
 }
 
-// Dictionary contains all the meta data about relations and traits
+// Dictionary contains all the meta data about relations and traits.
+// There is no name as an attribute of the struct.
+// Reason is that dictionaries are context based, then will be grouped in themes.
 type Dictionary struct {
 	// traitsDictionary links a name to the trait information
 	traitsDictionary map[string]*traitsInformation
