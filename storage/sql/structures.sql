@@ -1,5 +1,6 @@
 -- to execute in patterns database (pdb)
 -- In said database, schema spat exists. 
+drop table if exists spat.pattern_links;
 drop table if exists spat.entity_trait;
 drop table if exists spat.relation_trait;
 drop table if exists spat.relation_role;
@@ -10,7 +11,7 @@ drop table if exists spat.mdlinks;
 drop table if exists spat.mdroles;
 drop table if exists spat.traits;
 drop table if exists spat.reftypes;
-drop table if exists spat.dictionaries;
+drop table if exists spat.patterns;
 drop table if exists spat.periods;
 
 -- reftypes just defines if the value is an entity, a relation, or may be both
@@ -39,22 +40,29 @@ create table spat.periods (
 	period_value text[]
 );
 
-create table spat.dictionaries (
-	dictionary_id bigserial primary key
+create table spat.patterns (
+    pattern_id bigserial primary key, 
+    pattern_name text unique not null
 );
 
--- in a dictionary, a mdlink defines an entry as the trait / supertrait, 
--- both for relation and entities (depending on the reftype)
+-- links a pattern to one of its parents
+create table spat.pattern_links (
+    subpattern_id bigint references spat.patterns(pattern_id),
+    superpattern_id bigint references spat.patterns(pattern_id)
+);
+
+-- in a pattern's dictionary, a mdlink defines an entry as the trait / supertrait, 
+-- both for relation and entities (depending on the reftype). 
 create table spat.mdlinks (
-	dictionary_id bigint references spat.dictionaries(dictionary_id),
+	pattern_id bigint references spat.patterns(pattern_id),
 	reftype int references spat.reftypes(reftype_id),
 	subtrait_id bigint references spat.traits(trait_id),
 	supertrait_id bigint references spat.traits(trait_id)
 );
 
--- in a dictionary, for a relation metadata, an entry defines all possible traits given a role
+-- in a pattern's dictionary, for a relation metadata, an entry defines all possible traits given a role
 create table spat.mdroles (
-	dictionary_id bigint references spat.dictionaries(dictionary_id),
+	pattern_id bigint references spat.patterns(pattern_id),
 	relation_trait_id bigint references spat.traits(trait_id),
 	role_in_relation text not null,
 	trait_id bigint references spat.traits(trait_id)
