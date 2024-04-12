@@ -1,5 +1,9 @@
 -- to execute in patterns database (pdb)
 -- In said database, schema spat exists. 
+
+-- views, to drop before tables
+drop view spat.v_traitslinks;
+
 drop table if exists spat.pattern_links;
 drop table if exists spat.entity_trait;
 drop table if exists spat.relation_trait;
@@ -141,8 +145,6 @@ alter table spat.relation_role owner to upa;
 --------------------------------
 --------------------------------
 
-
-drop view spat.v_traitslinks;
 
 create or replace view spat.v_traitslinks as 
 with all_linked_elements as (
