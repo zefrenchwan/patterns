@@ -165,3 +165,209 @@ begin
 	
 end; $$
 ;
+
+--------------------------------------
+-- STARTING ENTITIES RELATIONS CODE --
+--------------------------------------
+
+-- spat.UpsertEntity upserts an entity: activity and traits)
+-- If traits do not exist, they are inserted as entity traits.  
+create or replace procedure spat.UpsertEntity(p_id text, p_activity text, p_traits text[]) language plpgsql as $$
+declare 
+	l_trait text;
+	l_traitid bigint;
+begin
+	if not exists (select 1 from spat.entities where entity_id = p_id) then 
+		insert into spat.entities values (p_id, p_activity);
+	else
+		update spt.entities set entity_period = p_activity;
+	end if;
+	
+	delete from spat.entity_trait where entity_id = p_id;
+	
+	foreach l_trait slice 0 in array p_traits loop 
+		select trait_id into l_traitid
+		from spat.traits 
+		where trait = l_trait and trait_type in (1,10);
+	
+		if l_traitid is null then 
+			insert into spat.traits values (1, l_trait);
+		end if;
+		
+		insert into spat.entity_trait values (p_id, l_traitid);
+	end loop;
+	
+end $$;
+
+-- spat.ArePeriodsDisjoin returns true if periods are disjoin. 
+-- Each period is represented as intervals separated by U
+-- Each interval is represented as:
+-- * border is either [ or ]
+-- * value is either a YYYY-MM-DD HH24:MI:ss or -oo or +oo
+create or replace function spat.ArePeriodsDisjoin(p_a text, p_b text) returns bool 
+language plpgsql as $$
+declare 
+	l_periods_a text[] := string_to_array(p_a,'U');
+	l_periods_b text[] := string_to_array(p_b,'U');
+	l_period_a text; -- each period a loop
+	l_period_b text; -- each period b loop
+	l_min_a timestamp without time zone; -- null means -oo
+	l_min_b timestamp without time zone; -- null means -oo
+	l_max_a timestamp without time zone; -- null means +oo
+	l_max_b timestamp without time zone; -- null means +oo
+	l_min_in_a bool; -- min included for period a 
+	l_min_in_b bool; -- min included for period b
+	l_max_in_a bool; -- max included for period a
+	l_max_in_b bool; -- max included for period b
+	l_value text; -- temp value
+begin
+	foreach l_period_a slice 0 in array l_periods_a loop
+		-- Parse interval to fill inner values for each interval in a.
+		-- To do so, basic string parsing using plpgsql functions. 
+		-- parse left part of the interval
+		if left(l_period_a,4) = ']-oo' then
+			l_min_a = null;
+			l_min_in_a = false;
+		else 
+			select substr(split_part(l_period_a,';',1),2) into l_value;
+			select TO_TIMESTAMP(l_value, 'YYYY-MM-DD HH24:MI:ss') into l_min_a;
+			if left(l_period_a,1) = '[' then 
+				l_min_in_a = true;
+			else
+				l_min_in_a = false;
+			end if;
+		end if;
+		-- parse right part of the interval
+		if right(l_period_a, 4) = '+oo[' then 
+			l_max_a = null;
+			l_max_in_a = false;
+		else
+			select split_part(l_period_a,';',2) into l_value;
+			select left(l_value, length(l_value)-1) into l_value;
+			select TO_TIMESTAMP(l_value, 'YYYY-MM-DD HH24:MI:ss') into l_max_a;
+			if right(l_period_a,1) = '[' then 
+				l_max_in_a = false;
+			else
+				l_max_in_a = true;
+			end if;
+		end if;		
+		-- p_a is parsed, then move to p_b. 
+		-- We parse it again, indeed
+		foreach l_period_b slice 0 in array l_periods_b loop
+			if left(l_period_b,4) = ']-oo' then
+				l_min_b = null;
+				l_min_in_b = false;
+			else 
+				select substr(split_part(l_period_b,';',1),2) into l_value;
+				select TO_TIMESTAMP(l_value, 'YYYY-MM-DD HH24:MI:ss') into l_min_b;
+				if left(l_period_b,1) = '[' then 
+					l_min_in_b = true;
+				else
+					l_min_in_b = false;
+				end if;
+			end if;
+			if right(l_period_b, 4) = '+oo[' then 
+				l_max_b = null;
+				l_max_in_b = false;
+			else
+				select split_part(l_period_b,';',2) into l_value;
+				select left(l_value, length(l_value)-1) into l_value;
+				select TO_TIMESTAMP(l_value, 'YYYY-MM-DD HH24:MI:ss') into l_max_b;
+				if right(l_period_b,1) = '[' then 
+					l_max_in_b = false;
+				else
+					l_max_in_b = true;
+				end if;
+			end if;		
+
+			-- Splitting is done, we may compare current interval in a and current interval in b
+			if l_min_a is null and l_min_b is null then 
+				-- common -oo
+				return false;
+			elsif l_max_a is null and l_max_b is null then
+				-- common +oo
+				return false;
+			elsif l_min_a is null and l_min_b < l_max_a then
+				-- common point before end of a = ]-oo, end)
+				return false;
+			elsif l_min_a is null and l_min_b = l_max_a and l_min_in_b and l_max_in_a then
+				-- common border point l_max_a = l_min_b with both values included 
+				return false;
+			elsif l_min_b is null and l_min_a < l_max_b then
+				-- same reason, dual interval
+				return false;
+			elsif l_min_b is null and l_min_a = l_max_b and l_min_in_a and l_max_in_b then 
+				-- same reason, dual interval
+				return false;
+			elsif l_max_a is null and l_max_b > l_min_a then
+				-- max(b) is more than min(a) and a is (min(a), +oo[
+				return false;
+			elsif l_max_a is null and l_max_b = l_min_a and l_min_in_a and l_max_in_b then 
+				-- a is [min(a),+oo[ and b is ..., min(a)]
+				return false;
+			elsif l_max_b is null and l_max_a > l_min_b then
+				return false;
+			elsif l_max_b is null and l_max_a = l_min_b and l_min_in_b and l_max_in_a then 
+				return false;	
+			end if;	
+			
+			-- both are finite
+			if l_min_a > l_max_b then 
+				continue;
+			elsif l_min_b > l_max_a then 
+				continue;
+			elsif l_min_a = l_max_b and l_max_in_b and l_min_in_a then 
+				return false;
+			elsif l_min_a = l_max_b then 
+				continue;
+			elsif l_min_b = l_max_a and l_max_in_a and l_min_in_b then
+				return false;
+			elsif l_min_b = l_max_a then
+				continue;
+			else
+				return false;
+			end if;
+		end loop;		
+	end loop;
+
+	return true;
+end $$;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+---------------
+-- UNTESTED --
+--------------
+
+
+
+create or replace procedure spat.SetAttributeToEntity(
+	p_id text, p_attribute, p_values text[], p_periods text[]
+) language plpgsql as $$
+
+delete from spat.entity_attributes 
+where attribute_name = p_attribute and entity_id = p_id;
+
+foreacj 
+
+
+end $$;
