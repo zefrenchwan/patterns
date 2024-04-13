@@ -180,7 +180,7 @@ begin
 	if not exists (select 1 from spat.entities where entity_id = p_id) then 
 		insert into spat.entities values (p_id, p_activity);
 	else
-		update spt.entities set entity_period = p_activity;
+		update spat.entities set entity_period = p_activity;
 	end if;
 	
 	delete from spat.entity_trait where entity_id = p_id;
@@ -198,6 +198,51 @@ begin
 	end loop;
 	
 end $$;
+
+-- spat.UpsertRelation upsers a relation with its activity and traits. 
+-- Relational traits not already stored are inserted as relational traits (not mixed)
+create or replace procedure spat.UpsertRelation(p_id text, p_activity text, p_traits text[]) language plpgsql as $$
+declare 
+	l_trait text;
+	l_traitid bigint;
+begin
+	if not exists (select 1 from spat.relations where relation_id = p_id) then 
+		insert into spat.relations values (p_id, p_activity);
+	else
+		update spat.relations set relation_activity = p_activity;
+	end if;
+	
+	delete from spat.relation_role where relation_id = p_id;
+	delete from spat.relation_trait where relation_id = p_id;
+	
+	foreach l_trait slice 0 in array p_traits loop 
+		select trait_id into l_traitid
+		from spat.traits 
+		where trait = l_trait and trait_type in (2,10);
+	
+		if l_traitid is null then 
+			insert into spat.traits values (2, l_trait);
+		end if;
+		
+		insert into spat.relation_trait values (p_id, l_traitid);
+	end loop;
+	
+end $$;
+
+-- spat.UpsertRoleInRelation upserts role for an existing relation
+create or replace procedure spat.UpsertRoleInRelation(
+	p_id text, p_role text, p_values text[]
+) language plpgsql as $$
+declare 
+begin 
+
+	if not exists (select 1 from spat.relations where relation_id = p_id) then 
+		raise exception 'relation does not exist (cannot create due to missing period)';
+	end if;
+	
+	delete from spat.relation_role where relation_id = p_id and role_in_relation = p_role;
+	insert into spat.relation_role values (p_id, p_role, p_values);
+end; $$;
 
 -- spat.ArePeriodsDisjoin returns true if periods are disjoin. 
 -- Each period is represented as intervals separated by U
@@ -331,43 +376,4 @@ begin
 	end loop;
 
 	return true;
-end $$;
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
----------------
--- UNTESTED --
---------------
-
-
-
-create or replace procedure spat.SetAttributeToEntity(
-	p_id text, p_attribute, p_values text[], p_periods text[]
-) language plpgsql as $$
-
-delete from spat.entity_attributes 
-where attribute_name = p_attribute and entity_id = p_id;
-
-foreacj 
-
-
 end $$;
