@@ -65,23 +65,60 @@ func (d *Dao) UpsertEntity(ctx context.Context, e patterns.Entity) error {
 		for value, period := range valuePeriodMap {
 			values[index] = value
 			periods[index] = serializePeriod(period)
+			index++
 		}
 
-		d.pool.Exec(ctx, "call spat.addattributevaluesinentity($1,$2,$3,$4)", e.Id(), attr, values, periods)
+		if _, err := d.pool.Exec(ctx, "call spat.addattributevaluesinentity($1,$2,$3,$4)", e.Id(), attr, values, periods); err != nil {
+			globalErr = errors.Join(globalErr, errRead)
+		}
 	}
 
 	if globalErr != nil {
 		tx.Rollback(ctx)
 		return globalErr
 	} else if err := tx.Commit(ctx); err != nil {
-		return errors.New("cannot commit transaction")
+		return fmt.Errorf("cannot commit transaction: %s", err.Error())
 	} else {
 		return nil
 	}
 }
 
+// UpsertRelation upserts all the relation (traits, roles)
 func (d *Dao) UpsertRelation(ctx context.Context, r patterns.Relation) error {
-	return nil
+	if d == nil || d.pool == nil {
+		return errors.New("dao not initialized")
+	}
+
+	tx, errTx := d.pool.Begin(ctx)
+	if errTx != nil {
+		return fmt.Errorf("cannot start transaction: %s", errTx.Error())
+	}
+
+	var globalErr error
+
+	if _, err := d.pool.Exec(ctx, "call spat.upsertrelation($1,$2,$3)", r.Id(), serializePeriod(r.ActivePeriod()), r.Traits()); err != nil {
+		globalErr = errors.Join(globalErr, err)
+	}
+
+	if _, err := d.pool.Exec(ctx, "call spat.clearrolesforrelation($1)", r.Id()); err != nil {
+		globalErr = errors.Join(globalErr, err)
+	}
+
+	// upsert each role
+	for role, values := range r.GetValuesPerRole() {
+		if _, err := d.pool.Exec(ctx, "call spat.upsertroleinrelation($1,$2,$3)", r.Id(), role, values); err != nil {
+			globalErr = errors.Join(globalErr, err)
+		}
+	}
+
+	if globalErr != nil {
+		tx.Rollback(ctx)
+		return globalErr
+	} else if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("cannot commit transaction: %s", err.Error())
+	} else {
+		return nil
+	}
 }
 
 // Close closes the dao and the underlying pool

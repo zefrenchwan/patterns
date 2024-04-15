@@ -30,4 +30,10 @@ func main() {
 	if err := dao.UpsertEntity(context.Background(), init); err != nil {
 		panic(err)
 	}
+
+	author := patterns.NewRelation(init.Id(), []string{"author"})
+
+	if err := dao.UpsertRelation(context.Background(), author); err != nil {
+		panic(err)
+	}
 }

@@ -211,8 +211,16 @@ begin
 	
 end $$;
 
+-- spat.ClearRolesForRelation clears roles for relation
+create or replace procedure spat.ClearRolesForRelation(p_id text) language plpgsql as $$
+declare 
+begin
+	delete from spat.relation_role where relation_id = p_id;
+end $$;
+
 -- spat.UpsertRelation upsers a relation with its activity and traits. 
--- Relational traits not already stored are inserted as relational traits (not mixed)
+-- Relational traits not already stored are inserted as relational traits (not mixed). 
+-- ATTENTION: roles are not cleared
 create or replace procedure spat.UpsertRelation(p_id text, p_activity text, p_traits text[]) language plpgsql as $$
 declare 
 	l_trait text;
@@ -244,7 +252,7 @@ begin
 		where trait = l_trait and trait_type in (2,10);
 	
 		if l_traitid is null then 
-						insert into spat.traits(trait_type, trait) values (2, l_trait) returning trait_id into l_traitid;
+			insert into spat.traits(trait_type, trait) values (2, l_trait) returning trait_id into l_traitid;
 		end if;
 		
 		insert into spat.relation_trait(relation_id, trait_id) values (p_id, l_traitid);
@@ -264,7 +272,7 @@ begin
 	end if;
 	
 	delete from spat.relation_role where relation_id = p_id and role_in_relation = p_role;
-	insert into spat.relation_role values (p_id, p_role, p_values);
+	insert into spat.relation_role(relation_id, role_in_relation, role_values) values (p_id, p_role, p_values);
 end; $$;
 
 -- spat.ArePeriodsDisjoin returns true if periods are disjoin. 

@@ -2,6 +2,7 @@
 -- In said database, schema spat exists. 
 
 -- views, to drop before tables
+drop view spat.v_full_relations;
 drop view spat.v_full_entities;
 drop view spat.v_traitslinks;
 
@@ -202,4 +203,22 @@ join spat.periods EPE on SEN.entity_period = EPE.period_id
 left outer join all_entities_traits AET on AET.entity_id = SEN.entity_id 
 left outer join all_entity_values AEV on AEV.entity_id = SEN.entity_id;
 
-alter view spat.v_traitslinks owner to upa;
+alter view spat.v_full_entities owner to upa;
+
+-- spat.v_full_relations returns the relations data (period, roles, etc)
+create or replace view spat.v_full_relations as 
+with 
+all_relations_traits as (
+	select RTR.relation_id, array_agg(RTA.trait) as traits
+	from spat.relation_trait RTR 
+	join spat.traits RTA on RTA.trait_id = RTR.trait_id
+	group by RTR.relation_id
+)
+select REL.relation_id, PEREL.period_empty, PEREL.period_full, PEREL.period_value,
+ART.traits, RRO.role_in_relation, RRO.role_values
+from spat.relations REL 
+join spat.periods PEREL on PEREL.period_id = REL.relation_activity
+join spat.relation_role RRO ON RRO.relation_id = REL.relation_id 
+left outer join all_relations_traits ART on ART.relation_id = REL.relation_id;
+
+alter view spat.v_full_relations owner to upa;
