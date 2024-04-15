@@ -109,7 +109,7 @@ alter table spat.entity_trait owner to upa;
 -- given an entity, an entry for an attribute AND its value
 create table spat.entity_attributes (
 	attribute_id bigserial primary key,
-	entity_id text references spat.entities(entity_id),
+	entity_id text references spat.entities(entity_id) on delete cascade,
 	attribute_name text not null, 
 	attribute_value text not null, 
 	period_id bigint references spat.periods(period_id) on delete cascade

@@ -507,6 +507,7 @@ begin
 		l_period = p_periods[i];
 		
 		call spat.SetPeriod(l_period, l_periodid);
-		insert into spat.entity_attributes values(p_id, p_attribute, l_value, l_periodid);	
+		insert into spat.entity_attributes(entity_id,attribute_name, attribute_value,period_id)
+		values(p_id, p_attribute, l_value, l_periodid);	
 	end loop;
 end $$;
