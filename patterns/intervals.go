@@ -567,3 +567,37 @@ func (t TypedComparator[T]) Remove(base Interval[T], elements ...Interval[T]) []
 
 	return result
 }
+
+// SerializeInterval returns empty for nil, the serialized interval with serializer to deal with T values
+func (i *Interval[T]) SerializeInterval(serializer func(T) string) string {
+	if i == nil {
+		return "];["
+	} else if i.IsFull() {
+		return "]-oo;+oo["
+	} else if i.IsEmpty() {
+		return "];["
+	}
+
+	result := ""
+	switch {
+	case i.minInfinite:
+		result = result + "]-oo"
+	case i.minIncluded:
+		result = result + "[" + serializer(i.min)
+	default:
+		result = result + "[" + serializer(i.min)
+	}
+
+	result = result + ";"
+
+	switch {
+	case i.maxInfinite:
+		result = result + "+oo["
+	case i.maxIncluded:
+		result = result + serializer(i.max) + "]"
+	default:
+		result = result + serializer(i.max) + "["
+	}
+
+	return result
+}

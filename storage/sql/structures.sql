@@ -2,6 +2,7 @@
 -- In said database, schema spat exists. 
 
 -- views, to drop before tables
+drop view spat.v_full_entities;
 drop view spat.v_traitslinks;
 
 drop table if exists spat.pattern_links;
@@ -171,5 +172,34 @@ with all_linked_elements as (
 select * from all_linked_elements
 UNION 
 select * from all_unlinked_elements;
+
+alter view spat.v_traitslinks owner to upa;
+
+
+-- spat.v_full_entities displays all raw data for a given entity
+create or replace view spat.v_full_entities as 
+with 
+all_entities_traits as (
+	select ENT.entity_id, array_agg(TRA.trait) as traits
+	from spat.entity_trait ENT
+	join spat.traits TRA on TRA.trait_id = ENT.trait_id
+	group by ENT.entity_id
+), 
+all_entity_values as (
+	select ETA.entity_id, ETA.attribute_name, ETA.attribute_value, 
+	PER.period_empty, PER.period_full, PER.period_value 
+	from spat.entity_attributes ETA 
+	join spat.periods PER on PER.period_id = ETA.period_id
+)
+select SEN.entity_id, 
+EPE.period_empty as entity_period_empty, 
+EPE.period_full as entity_period_full, 
+EPE.period_value as entity_period_value, 
+AET.traits, AEV.attribute_name, AEV.attribute_value, 
+AEV.period_empty, AEV.period_full, AEV.period_value
+from spat.entities SEN 
+join spat.periods EPE on SEN.entity_period = EPE.period_id
+left outer join all_entities_traits AET on AET.entity_id = SEN.entity_id 
+left outer join all_entity_values AEV on AEV.entity_id = SEN.entity_id;
 
 alter view spat.v_traitslinks owner to upa;

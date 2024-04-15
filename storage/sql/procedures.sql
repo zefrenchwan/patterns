@@ -203,10 +203,10 @@ begin
 		where trait = l_trait and trait_type in (1,10);
 	
 		if l_traitid is null then 
-			insert into spat.traits values (1, l_trait);
+			insert into spat.traits(trait_type, trait) values (1, l_trait) returning trait_id into l_traitid;
 		end if;
 		
-		insert into spat.entity_trait values (p_id, l_traitid);
+		insert into spat.entity_trait(entity_id, trait_id) values (p_id, l_traitid);
 	end loop;
 	
 end $$;
@@ -244,10 +244,10 @@ begin
 		where trait = l_trait and trait_type in (2,10);
 	
 		if l_traitid is null then 
-			insert into spat.traits values (2, l_trait);
+						insert into spat.traits(trait_type, trait) values (2, l_trait) returning trait_id into l_traitid;
 		end if;
 		
-		insert into spat.relation_trait values (p_id, l_traitid);
+		insert into spat.relation_trait(relation_id, trait_id) values (p_id, l_traitid);
 	end loop;
 	
 end $$;
