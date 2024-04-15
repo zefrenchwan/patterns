@@ -112,7 +112,7 @@ create table spat.entity_attributes (
 	entity_id text references spat.entities(entity_id),
 	attribute_name text not null, 
 	attribute_value text not null, 
-	period_id bigint references spat.periods(period_id)
+	period_id bigint references spat.periods(period_id) on delete cascade
 );
 
 alter table spat.entity_attributes owner to upa;
@@ -121,7 +121,7 @@ alter table spat.entity_attributes owner to upa;
 create table spat.relations (
 	relation_id text primary key, 
     -- activity defines when the relation is true
-	relation_activity bigint references spat.periods(period_id)
+	relation_activity bigint references spat.periods(period_id) on delete cascade
 );
 
 alter table spat.relations owner to upa;

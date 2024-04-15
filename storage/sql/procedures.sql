@@ -176,14 +176,26 @@ create or replace procedure spat.UpsertEntity(p_id text, p_activity text, p_trai
 declare 
 	l_trait text;
 	l_traitid bigint;
+	l_period bigint;
+	l_previousperiod bigint;
 begin
 	if not exists (select 1 from spat.entities where entity_id = p_id) then 
-		insert into spat.entities values (p_id, p_activity);
-	else
-		update spat.entities set entity_period = p_activity;
+		call spat.setperiod(p_activity, l_period);
+		insert into spat.entities values (p_id, l_period);
+	else		
+		select entity_period into l_previousperiod
+		from spat.entities where entity_id = p_id;
+
+		call spat.setperiod(p_activity, l_period);
+		update spat.entities set entity_period = l_period;
+		delete from spat.periods where period_id = l_previousperiod;
 	end if;
 	
 	delete from spat.entity_trait where entity_id = p_id;
+
+	if p_traits is null or array_length(p_traits, 1) = 0 then 
+		return;
+	end if;
 	
 	foreach l_trait slice 0 in array p_traits loop 
 		select trait_id into l_traitid
@@ -205,15 +217,26 @@ create or replace procedure spat.UpsertRelation(p_id text, p_activity text, p_tr
 declare 
 	l_trait text;
 	l_traitid bigint;
+	l_period bigint;
+	l_previousperiod bigint;
 begin
 	if not exists (select 1 from spat.relations where relation_id = p_id) then 
-		insert into spat.relations values (p_id, p_activity);
-	else
-		update spat.relations set relation_activity = p_activity;
+		call spat.setperiod(p_activity, l_period);
+		insert into spat.relations values (p_id, l_period);
+	else		
+		select relation_activity into l_previousperiod
+		from spat.relations where relation_id = p_id;
+
+		call spat.setperiod(p_activity, l_period);
+		update spat.relations set relation_activity = l_period;
+		delete from spat.periods where period_id = l_previousperiod;
 	end if;
 	
-	delete from spat.relation_role where relation_id = p_id;
 	delete from spat.relation_trait where relation_id = p_id;
+
+	if p_traits is null or array_length(p_traits, 1) = 0 then 
+		return;
+	end if;
 	
 	foreach l_trait slice 0 in array p_traits loop 
 		select trait_id into l_traitid
@@ -376,4 +399,114 @@ begin
 	end loop;
 
 	return true;
+end $$;
+
+-- spat.SetPeriod sets a period and returns its id via out variable
+create or replace procedure spat.SetPeriod(p_period text, p_newid out bigint)
+language plpgsql as $$
+declare 
+	l_periods text[] := string_to_array(p_period,'U');
+	l_period text; -- each period loop
+	l_min timestamp without time zone; -- null means -oo
+	l_max timestamp without time zone; -- null means +oo
+	l_min_in bool; -- min included for period  
+	l_max_in bool; -- max included for period 
+	l_value text; -- temp value
+	l_resid bigint; -- to store p_newid value
+	l_globalmin timestamp without time zone;
+	l_globalmax timestamp without time zone;
+	l_counter int;
+begin
+	if p_period = '];[' or upper(p_period) = 'EMPTY' then 
+		insert into spat.periods(period_empty, period_full, period_min, period_max, period_value) 
+		values(true, false, null, null,null)
+		returning period_id into l_resid;
+		p_newid = l_resid;
+	elsif p_period = ']-oo;+oo[' then 
+		insert into spat.periods(period_empty, period_full, period_min, period_max, period_value) 
+		values(false, true, null, null,null)
+		returning period_id into l_resid;
+		p_newid = l_resid;
+	else 
+		-- parse values to find min and max timestamps
+		l_counter = 0;
+		foreach l_period slice 0 in array l_periods loop
+			-- parse left part of the interval
+			if left(l_period,4) = ']-oo' then
+				l_min = null;
+			else 
+				select substr(split_part(l_period,';',1),2) into l_value;
+				select TO_TIMESTAMP(l_value, 'YYYY-MM-DD HH24:MI:ss') into l_min;
+			end if;
+			-- parse right part of the interval
+			if right(l_period, 4) = '+oo[' then 
+				l_max = null;
+			else
+				select split_part(l_period,';',2) into l_value;
+				select left(l_value, length(l_value)-1) into l_value;
+				select TO_TIMESTAMP(l_value, 'YYYY-MM-DD HH24:MI:ss') into l_max;
+			end if;
+			
+			-- then, set global min, global max
+			if l_counter = 0 then 
+				l_globalmin = l_min;
+				l_globalmax = l_max;
+			else
+				if l_min is null then 
+					l_globalmin = l_min;
+				elsif l_globalmin > l_min then 
+					l_globalmin = l_min;
+				end if;
+				
+				if l_max is null then
+					l_globalmax = l_max;			
+				elsif l_globalmax < l_max then
+					l_globalmax = l_max;
+				end if;
+			end if;
+
+			l_counter = l_counter + 1;
+		end loop;
+		-- insert period 
+		insert into spat.periods(period_empty, period_full, period_min, period_max, period_value) 
+		values(false, false, l_globalmin, l_globalmax, p_period)
+		returning period_id into l_resid;
+		p_newid = l_resid;
+	end if;
+end $$;
+
+-- spat.AddAttributeValuesInEntity adds attribute values to an exising entity
+create or replace procedure spat.AddAttributeValuesInEntity(
+	p_id text, p_attribute text, p_values text[], p_periods text[]
+) language plpgsql as $$
+declare 
+	l_attributeid bigint;
+	l_value text;
+	l_period text;
+	l_periodid bigint;
+begin 
+	if not exists (select 1 from spat.entities where entity_id = p_id) then 
+		raise exception 'entity with id % does not exist', p_id;
+	end if;
+	
+	if array_length(p_values,1) != array_length(p_periods,1) then 
+		raise exception 'size of parameters do not match';
+	end if; 
+
+	delete from spat.periods where period_id in (
+		select period_id
+		from spat.entity_attributes
+		where entity_id = p_id and attribute_name = p_attribute
+	);
+	
+	--delete from spat.entity_attributes
+	--where entity_id = p_id and attribute_name = p_attribute; 
+	
+	for i in 1 .. array_length(p_values,1) loop 
+		l_value = p_values[i];
+		l_period = p_periods[i];
+		
+		call spat.SetPeriod(l_period, l_periodid);
+		insert into spat.entity_attributes values(p_id, p_attribute, l_value, l_periodid);	
+	end loop;
 end $$;
