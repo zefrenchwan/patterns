@@ -39,6 +39,7 @@ end loop;
 end; $$
 ;
 
+alter procedure spat.UpsertPattern owner to upa;
 
 -- spat.CreateTrait creates a trait if it does not exist. 
 create or replace procedure spat.CreateTrait(p_trait text) language plpgsql as $$
@@ -56,6 +57,8 @@ begin
 end; $$
 ;
 
+alter procedure spat.CreateTrait owner to upa;
+
 -- spat.CreateRelationTrait creates a relation trait if it does not exist
 create or replace procedure spat.CreateRelationTrait(p_trait text) language plpgsql as $$
 declare
@@ -71,6 +74,8 @@ begin
 	end if;
 end; $$
 ;
+
+alter procedure spat.CreateRelationTrait owner to upa;
 
 -- spat.LinkTraitsInPattern links a subtrait to a trait in a pattern. 
 create or replace procedure spat.LinkTraitsInPattern(p_patternname text, p_subtrait text, p_trait text, p_reftype int) language plpgsql as $$
@@ -118,6 +123,7 @@ begin
 end; $$
 ;
 
+alter procedure spat.LinkTraitsInPattern owner to upa;
 
 -- spat.AddRoleToRelationInPattern sets a role with given EXISTING traits. 
 -- pattern and relation may be created on the fly if necessary. 
@@ -166,6 +172,8 @@ begin
 end; $$
 ;
 
+alter procedure spat.AddRoleToRelationInPattern owner to upa;
+
 --------------------------------------
 -- STARTING ENTITIES RELATIONS CODE --
 --------------------------------------
@@ -211,12 +219,16 @@ begin
 	
 end $$;
 
+alter procedure spat.UpsertEntity owner to upa;
+
 -- spat.ClearRolesForRelation clears roles for relation
 create or replace procedure spat.ClearRolesForRelation(p_id text) language plpgsql as $$
 declare 
 begin
 	delete from spat.relation_role where relation_id = p_id;
 end $$;
+
+alter procedure spat.ClearRolesForRelation owner to upa;
 
 -- spat.UpsertRelation upsers a relation with its activity and traits. 
 -- Relational traits not already stored are inserted as relational traits (not mixed). 
@@ -260,6 +272,8 @@ begin
 	
 end $$;
 
+alter procedure spat.UpsertRelation owner to upa;
+
 -- spat.UpsertRoleInRelation upserts role for an existing relation
 create or replace procedure spat.UpsertRoleInRelation(
 	p_id text, p_role text, p_values text[]
@@ -274,6 +288,8 @@ begin
 	delete from spat.relation_role where relation_id = p_id and role_in_relation = p_role;
 	insert into spat.relation_role(relation_id, role_in_relation, role_values) values (p_id, p_role, p_values);
 end; $$;
+
+alter procedure spat.UpsertRoleInRelation owner to upa;
 
 -- spat.ArePeriodsDisjoin returns true if periods are disjoin. 
 -- Each period is represented as intervals separated by U
@@ -409,6 +425,8 @@ begin
 	return true;
 end $$;
 
+alter function spat.ArePeriodsDisjoin owner to upa;
+
 -- spat.SetPeriod sets a period and returns its id via out variable
 create or replace procedure spat.SetPeriod(p_period text, p_newid out bigint)
 language plpgsql as $$
@@ -483,6 +501,8 @@ begin
 	end if;
 end $$;
 
+alter procedure spat.SetPeriod owner to upa;
+
 -- spat.AddAttributeValuesInEntity adds attribute values to an exising entity
 create or replace procedure spat.AddAttributeValuesInEntity(
 	p_id text, p_attribute text, p_values text[], p_periods text[]
@@ -519,3 +539,106 @@ begin
 		values(p_id, p_attribute, l_value, l_periodid);	
 	end loop;
 end $$;
+
+alter procedure spat.AddAttributeValuesInEntity owner to upa;
+
+-- spat.IsPeriodActiveAtTimestamp returns true if period contains the moment
+create or replace function spat.IsPeriodActiveAtTimestamp(
+	p_period_empty bool, 
+	p_period_full bool,
+	p_period text, 
+	p_moment timestamp without time zone
+) returns bool language plpgsql as $$
+declare 
+	l_periods text[];
+	l_period text; -- each period loop
+	l_min timestamp without time zone; -- null means -oo
+	l_max timestamp without time zone; -- null means +oo
+	l_min_in bool; -- min included for period  
+	l_max_in bool; -- max included for period 
+	l_value text; -- temp value
+begin
+	if p_period_empty then 
+		return false;
+	elsif p_period_full then 
+		return true;
+	end if;
+	
+	l_periods = string_to_array(p_period,'U');
+	foreach l_period slice 0 in array l_periods loop
+		if left(l_period,4) = ']-oo' then
+			l_min = null;
+			l_min_in = false;
+		else 
+			select substr(split_part(l_period,';',1),2) into l_value;
+			select TO_TIMESTAMP(l_value, 'YYYY-MM-DD HH24:MI:ss') into l_min;
+			if left(l_period,1) = '[' then 
+				l_min_in = true;
+			else
+				l_min_in = false;
+			end if;
+		end if;
+		-- parse right part of the interval
+		if right(l_period, 4) = '+oo[' then 
+			l_max = null;
+			l_max_in = false;
+		else
+			select split_part(l_period,';',2) into l_value;
+			select left(l_value, length(l_value)-1) into l_value;
+			select TO_TIMESTAMP(l_value, 'YYYY-MM-DD HH24:MI:ss') into l_max;
+			if right(l_period,1) = '[' then 
+				l_max_in = false;
+			else
+				l_max_in = true;
+			end if;
+		end if;		
+		
+		-- then, test if date is in period
+		if l_min = p_moment then
+			return l_min_in;
+		elsif l_max = p_moment then
+			return l_max_in;
+		elsif l_min < p_moment and p_moment < l_max then 
+			return true;
+		end if;
+	end loop;
+
+	return false;
+end; $$; 
+
+alter function spat.IsPeriodActiveAtTimestamp owner to upa;
+
+-- spat.ActiveEntitiesValuesAt returns all active values at a given time
+create or replace function spat.ActiveEntitiesValuesAt(
+	p_moment timestamp without time zone
+) returns table (entity_id text, attribute_name text, attribute_value text, traits text[]) 
+language plpgsql as $$
+begin
+return query 
+	with 
+	active_entities as (
+		select ENT.entity_id
+		from spat.entities ENT 
+		join spat.periods PER on PER.period_id = ENT.entity_period
+		where spat.isperiodactiveattimestamp(PER.period_empty, PER.period_full, PER.period_value, p_moment)
+	), active_entities_traits as (
+		select ENT.entity_id, array_agg(TRA.trait) as traits
+		from active_entities ENT 
+		join spat.entity_trait ETA on ETA.entity_id = ENT.entity_id
+		join spat.traits TRA on TRA.trait_id = ETA.trait_id
+		group by ENT.entity_id
+	), active_attributes as (
+		select ENT.entity_id, EAT.attribute_name, EAT.attribute_value
+		from active_entities ENT 
+		join spat.entity_attributes EAT on EAT.entity_id = ENT.entity_id
+		join spat.periods EPER on EPER.period_id = EAT.period_id 
+		where spat.isperiodactiveattimestamp(EPER.period_empty, EPER.period_full, EPER.period_value, p_moment)
+	)
+	select ENT.entity_id, AAT.attribute_name, AAT.attribute_value, AET.traits
+	from active_entities ENT
+	left outer join active_attributes AAT on AAT.entity_id = ENT.entity_id 
+	left outer join active_entities_traits AET on AET.entity_id = ENT.entity_id 
+;
+end; $$; 
+
+alter function spat.ActiveEntitiesValuesAt owner to upa;
