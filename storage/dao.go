@@ -121,6 +121,64 @@ func (d *Dao) UpsertRelation(ctx context.Context, r patterns.Relation) error {
 	}
 }
 
+// LoadActiveEntitiesAtTime returns active entity values at a given time
+func (d *Dao) LoadActiveEntitiesAtTime(ctx context.Context, moment time.Time, trait string, valuesQuery map[string]string) ([]ActiveEntity, error) {
+	if d == nil || d.pool == nil {
+		return nil, errors.New("dao not initialized")
+	}
+
+	query := queryForEntitiesAtDate(trait, valuesQuery)
+	rows, errRows := d.pool.Query(ctx, query, moment)
+	if errRows != nil {
+		return nil, errRows
+	} else {
+		defer rows.Close()
+	}
+
+	activeValues := make(map[string]ActiveEntity)
+
+	var globalErr error
+	for rows.Next() {
+		var id, attribute, value string
+		var traits []string
+		if err := rows.Scan(&id, &attribute, &value, &traits); err != nil {
+			globalErr = errors.Join(globalErr, err)
+		}
+
+		newValue := ActiveEntityValue{
+			AttributeName:  attribute,
+			AttributeValue: value,
+		}
+
+		if previous, found := activeValues[id]; found {
+			previous.Values = append(previous.Values, newValue)
+			activeValues[id] = previous
+		} else {
+			newEntity := ActiveEntity{
+				Id:     id,
+				Traits: traits,
+				Values: []ActiveEntityValue{newValue},
+			}
+
+			activeValues[id] = newEntity
+		}
+	}
+
+	if globalErr != nil {
+		return nil, globalErr
+	}
+
+	result := make([]ActiveEntity, len(activeValues))
+	index := 0
+
+	for _, value := range activeValues {
+		result[index] = value
+		index++
+	}
+
+	return result, nil
+}
+
 // Close closes the dao and the underlying pool
 func (d *Dao) Close() {
 	if d != nil && d.pool != nil {

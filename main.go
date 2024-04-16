@@ -3,9 +3,10 @@ package main
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"os"
 
-	"github.com/zefrenchwan/patterns.git/patterns"
+	"github.com/zefrenchwan/patterns.git/serving"
 	"github.com/zefrenchwan/patterns.git/storage"
 )
 
@@ -23,17 +24,9 @@ func main() {
 		defer dao.Close()
 	}
 
-	init := patterns.NewEntity([]string{"Person"})
-	init.SetValue("last name", "Meee")
-	init.SetValue("first name", "Me")
+	servingPort := os.Getenv("PATTERNS_PORT")
+	mux := http.NewServeMux()
+	serving.InitService(mux, dao)
 
-	if err := dao.UpsertEntity(context.Background(), init); err != nil {
-		panic(err)
-	}
-
-	author := patterns.NewRelation(init.Id(), []string{"author"})
-
-	if err := dao.UpsertRelation(context.Background(), author); err != nil {
-		panic(err)
-	}
+	http.ListenAndServe(servingPort, mux)
 }
