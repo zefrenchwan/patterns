@@ -1,23 +1,50 @@
 package serving
 
 import (
-	"context"
 	"encoding/json"
 	"net/http"
 	"time"
-
-	"github.com/zefrenchwan/patterns.git/storage"
 )
 
-func InitService(mux *http.ServeMux, dao storage.Dao) {
-	mux.HandleFunc("/load/trait/{trait}", func(w http.ResponseWriter, r *http.Request) {
-		if err := LoadActiveEntitiesHandler(dao, w, r); err != nil {
-			http.Error(w, "Internal error: "+err.Error(), 500)
+const (
+	// DATE_WS_FORMAT is the format for moments
+	DATE_WS_FORMAT = "2006-01-02T15:04:05"
+)
+
+// loadActiveEntitiesAtDateHandler writes entities as json active for given moment, with matching attributes
+func loadActiveEntitiesAtDateHandler(wrapper ServiceParameters, writer http.ResponseWriter, request *http.Request) error {
+	defer request.Body.Close()
+
+	trait := request.PathValue("trait")
+	momentStr := request.PathValue("moment")
+	var moment time.Time
+	if t, err := time.Parse(DATE_WS_FORMAT, momentStr); err != nil {
+		return NewServiceHttpClientError("invalid date: " + err.Error())
+	} else {
+		moment = t
+	}
+
+	values := request.URL.Query()
+	queryValues := make(map[string]string)
+	for k, v := range values {
+		if len(v) != 1 {
+			return NewServiceHttpClientError("invalid parameter: expecting key value, with one value per key")
 		}
-	})
+
+		queryValues[k] = v[0]
+	}
+
+	activeValues, errLoad := wrapper.Dao.LoadActiveEntitiesAtTime(wrapper.Ctx, moment, trait, queryValues)
+	if errLoad != nil {
+		return errLoad
+	}
+
+	json.NewEncoder(writer).Encode(activeValues)
+	return nil
 }
 
-func LoadActiveEntitiesHandler(dao storage.Dao, writer http.ResponseWriter, request *http.Request) error {
+// loadActiveEntitiesHandler writes entities as json active for now, with matching attributes
+func loadActiveEntitiesHandler(wrapper ServiceParameters, writer http.ResponseWriter, request *http.Request) error {
 	defer request.Body.Close()
 
 	trait := request.PathValue("trait")
@@ -25,15 +52,18 @@ func LoadActiveEntitiesHandler(dao storage.Dao, writer http.ResponseWriter, requ
 	values := request.URL.Query()
 	queryValues := make(map[string]string)
 	for k, v := range values {
+		if len(v) != 1 {
+			return NewServiceHttpClientError("invalid parameter: expecting key value, with one value per key")
+		}
+
 		queryValues[k] = v[0]
 	}
 
-	activeValues, errLoad := dao.LoadActiveEntitiesAtTime(context.Background(), time.Now().UTC(), trait, queryValues)
+	activeValues, errLoad := wrapper.Dao.LoadActiveEntitiesAtTime(wrapper.Ctx, time.Now().UTC(), trait, queryValues)
 	if errLoad != nil {
 		return errLoad
 	}
 
 	json.NewEncoder(writer).Encode(activeValues)
 	return nil
-
 }

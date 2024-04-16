@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"strings"
 
 	"github.com/zefrenchwan/patterns.git/serving"
 	"github.com/zefrenchwan/patterns.git/storage"
@@ -25,8 +26,10 @@ func main() {
 	}
 
 	servingPort := os.Getenv("PATTERNS_PORT")
-	mux := http.NewServeMux()
-	serving.InitService(mux, dao)
+	if !strings.HasPrefix(servingPort, ":") {
+		panic(fmt.Errorf("invalid port %s : it should be a : and a valid number", servingPort))
+	}
 
+	mux := serving.InitService(dao)
 	http.ListenAndServe(servingPort, mux)
 }
