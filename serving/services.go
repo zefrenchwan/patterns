@@ -17,8 +17,8 @@ func InitService(dao storage.Dao) *http.ServeMux {
 	}
 
 	// TODO: add in here your own handlers
-	AddServiceHandlerToMux(mux, "/load/trait/{trait}", loadActiveEntitiesHandler, parameters)
-	AddServiceHandlerToMux(mux, "/load/trait/{trait}/moment/{moment}", loadActiveEntitiesAtDateHandler, parameters)
+	AddServiceHandlerToMux(mux, "/snapshot/trait/{trait}", loadActiveEntitiesHandler, parameters)
+	AddServiceHandlerToMux(mux, "/snapshot/trait/{trait}/moment/{moment}", loadActiveEntitiesAtDateHandler, parameters)
 
 	// mux is complete, all handlers are set
 	return mux
