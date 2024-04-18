@@ -2,6 +2,7 @@ package patterns
 
 import (
 	"errors"
+	"strings"
 )
 
 // TypedComparator defines a compare function over a type
@@ -570,12 +571,10 @@ func (t TypedComparator[T]) Remove(base Interval[T], elements ...Interval[T]) []
 
 // SerializeInterval returns empty for nil, the serialized interval with serializer to deal with T values
 func (i *Interval[T]) SerializeInterval(serializer func(T) string) string {
-	if i == nil {
+	if i == nil || i.IsEmpty() {
 		return "];["
 	} else if i.IsFull() {
 		return "]-oo;+oo["
-	} else if i.IsEmpty() {
-		return "];["
 	}
 
 	result := ""
@@ -585,7 +584,7 @@ func (i *Interval[T]) SerializeInterval(serializer func(T) string) string {
 	case i.minIncluded:
 		result = result + "[" + serializer(i.min)
 	default:
-		result = result + "[" + serializer(i.min)
+		result = result + "]" + serializer(i.min)
 	}
 
 	result = result + ";"
@@ -600,4 +599,65 @@ func (i *Interval[T]) SerializeInterval(serializer func(T) string) string {
 	}
 
 	return result
+}
+
+// DeserializeInterval reads a string and uses the deserializer to make the interval
+func (t TypedComparator[T]) DeserializeInterval(s string, deserializer func(s string) (T, error)) (Interval[T], error) {
+	if s == "];[" {
+		return t.NewEmptyInterval(), nil
+	} else if s == "]-oo;+oo[" {
+		return t.NewFullInterval(), nil
+	}
+
+	// neither empty, nor full
+	parts := strings.Split(s, ";")
+	if len(parts) != 2 {
+		return t.NewEmptyInterval(), errors.New("expecting two parts")
+	} else if !strings.HasPrefix(parts[0], "[") && !strings.HasPrefix(parts[0], "]") {
+		return t.NewEmptyInterval(), errors.New("malformed left part")
+	} else if !strings.HasSuffix(parts[1], "[") && !strings.HasSuffix(parts[1], "]") {
+		return t.NewEmptyInterval(), errors.New("malformed right part")
+	}
+
+	leftPart := parts[0]
+	rightPart := parts[1]
+	rightSize := len(parts[1])
+
+	if len(leftPart) <= 1 {
+		return t.NewEmptyInterval(), errors.New("empty left part")
+	} else if len(rightPart) <= 1 {
+		return t.NewEmptyInterval(), errors.New("empty right part")
+	}
+
+	minIn := leftPart[0] == '['
+	maxIn := rightPart[rightSize-1] == ']'
+	minInfinite := leftPart == "]-oo"
+	maxInfinite := rightPart == "+oo["
+	leftPart = leftPart[1:]
+	rightPart = rightPart[0 : rightSize-1]
+
+	var result Interval[T]
+	result.empty = false
+
+	if maxInfinite {
+		result.maxInfinite = maxInfinite
+		result.maxIncluded = false
+	} else if maxValue, maxErr := deserializer(rightPart); maxErr != nil {
+		return result, errors.New(maxErr.Error())
+	} else {
+		result.maxIncluded = maxIn
+		result.max = maxValue
+	}
+
+	if minInfinite {
+		result.minInfinite = minInfinite
+		result.minIncluded = false
+	} else if minValue, minErr := deserializer(leftPart); minErr != nil {
+		return result, errors.New(minErr.Error())
+	} else {
+		result.min = minValue
+		result.minIncluded = minIn
+	}
+
+	return result, nil
 }

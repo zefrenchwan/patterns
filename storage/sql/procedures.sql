@@ -178,28 +178,33 @@ alter procedure spat.AddRoleToRelationInPattern owner to upa;
 -- STARTING ENTITIES RELATIONS CODE --
 --------------------------------------
 
--- spat.UpsertEntity upserts an entity: activity and traits)
+-- spat.UpsertElement upserts an element (relation and entity): id, activity and traits.
 -- If traits do not exist, they are inserted as entity traits.  
-create or replace procedure spat.UpsertEntity(p_id text, p_activity text, p_traits text[]) language plpgsql as $$
+create or replace procedure spat.UpsertElement(p_id text, p_type int, p_activity text, p_traits text[]) language plpgsql as $$
 declare 
 	l_trait text;
 	l_traitid bigint;
 	l_period bigint;
 	l_previousperiod bigint;
 begin
-	if not exists (select 1 from spat.entities where entity_id = p_id) then 
+	if not exists (select 1 from spat.reftypes where reftype_id = p_type) then 
+		raise exception 'invalid p_type';
+	end if;
+
+	if not exists (select 1 from spat.elements where element_id = p_id) then 
 		call spat.setperiod(p_activity, l_period);
-		insert into spat.entities values (p_id, l_period);
+		insert into spat.elements(element_id, element_type, element_period) 
+		values (p_id, p_type, l_period);
 	else		
 		select entity_period into l_previousperiod
-		from spat.entities where entity_id = p_id;
+		from spat.elements where element_id = p_id;
 
 		call spat.setperiod(p_activity, l_period);
-		update spat.entities set entity_period = l_period;
+		update spat.element set element_period = l_period;
 		delete from spat.periods where period_id = l_previousperiod;
 	end if;
 	
-	delete from spat.entity_trait where entity_id = p_id;
+	delete from spat.element_trait where element_id = p_id;
 
 	if p_traits is null or array_length(p_traits, 1) = 0 then 
 		return;
@@ -208,18 +213,41 @@ begin
 	foreach l_trait slice 0 in array p_traits loop 
 		select trait_id into l_traitid
 		from spat.traits 
-		where trait = l_trait and trait_type in (1,10);
+		where trait = l_trait and trait_type in (p_type,10);
 	
 		if l_traitid is null then 
 			insert into spat.traits(trait_type, trait) values (1, l_trait) returning trait_id into l_traitid;
 		end if;
 		
-		insert into spat.entity_trait(entity_id, trait_id) values (p_id, l_traitid);
+		insert into spat.element_trait(element_id, trait_id) values (p_id, l_traitid);
 	end loop;
-	
 end $$;
 
-alter procedure spat.UpsertEntity owner to upa;
+alter procedure spat.UpsertElement owner to upa;
+
+create or replace procedure spat.UpsertEntity(p_id text, p_activity text, p_traits text[]) language plpgsql as $$
+declare 
+begin 
+	call spat.UpsertElement(p_id, 1, p_activity, p_traits);
+end; $$;
+
+alter procedure spat.UpsertElement owner to upa;
+
+create or replace procedure spat.UpsertEntity(p_id text, p_activity text, p_traits text[]) language plpgsql as $$
+declare 
+begin 
+	call spat.UpsertElement(p_id, 1, p_activity, p_traits);
+end; $$;
+
+alter procedure spat.UpsertElement owner to upa;
+
+create or replace procedure spat.UpsertRelation(p_id text, p_activity text, p_traits text[]) language plpgsql as $$
+declare 
+begin 
+	call spat.UpsertElement(p_id, 2, p_activity, p_traits);
+end; $$;
+
+alter procedure spat.UpsertRelation owner to upa;
 
 -- spat.ClearRolesForRelation clears roles for relation
 create or replace procedure spat.ClearRolesForRelation(p_id text) language plpgsql as $$
@@ -229,50 +257,6 @@ begin
 end $$;
 
 alter procedure spat.ClearRolesForRelation owner to upa;
-
--- spat.UpsertRelation upsers a relation with its activity and traits. 
--- Relational traits not already stored are inserted as relational traits (not mixed). 
--- ATTENTION: roles are not cleared
-create or replace procedure spat.UpsertRelation(p_id text, p_activity text, p_traits text[]) language plpgsql as $$
-declare 
-	l_trait text;
-	l_traitid bigint;
-	l_period bigint;
-	l_previousperiod bigint;
-begin
-	if not exists (select 1 from spat.relations where relation_id = p_id) then 
-		call spat.setperiod(p_activity, l_period);
-		insert into spat.relations values (p_id, l_period);
-	else		
-		select relation_activity into l_previousperiod
-		from spat.relations where relation_id = p_id;
-
-		call spat.setperiod(p_activity, l_period);
-		update spat.relations set relation_activity = l_period;
-		delete from spat.periods where period_id = l_previousperiod;
-	end if;
-	
-	delete from spat.relation_trait where relation_id = p_id;
-
-	if p_traits is null or array_length(p_traits, 1) = 0 then 
-		return;
-	end if;
-	
-	foreach l_trait slice 0 in array p_traits loop 
-		select trait_id into l_traitid
-		from spat.traits 
-		where trait = l_trait and trait_type in (2,10);
-	
-		if l_traitid is null then 
-			insert into spat.traits(trait_type, trait) values (2, l_trait) returning trait_id into l_traitid;
-		end if;
-		
-		insert into spat.relation_trait(relation_id, trait_id) values (p_id, l_traitid);
-	end loop;
-	
-end $$;
-
-alter procedure spat.UpsertRelation owner to upa;
 
 -- spat.UpsertRoleInRelation upserts role for an existing relation
 create or replace procedure spat.UpsertRoleInRelation(
@@ -513,7 +497,10 @@ declare
 	l_period text;
 	l_periodid bigint;
 begin 
-	if not exists (select 1 from spat.entities where entity_id = p_id) then 
+	if not exists (
+		select 1 from spat.elements 
+		where element_id = p_id and element_type in (1,10)
+	) then 
 		raise exception 'entity with id % does not exist', p_id;
 	end if;
 	
@@ -527,8 +514,8 @@ begin
 		where entity_id = p_id and attribute_name = p_attribute
 	);
 	
-	--delete from spat.entity_attributes
-	--where entity_id = p_id and attribute_name = p_attribute; 
+	delete from spat.entity_attributes
+	where entity_id = p_id and attribute_name = p_attribute; 
 	
 	for i in 1 .. array_length(p_values,1) loop 
 		l_value = p_values[i];
@@ -617,10 +604,11 @@ begin
 return query 
 	with 
 	active_entities as (
-		select ENT.entity_id
-		from spat.entities ENT 
+		select ENT.element_id as entity_id
+		from spat.elements ENT 
 		join spat.periods PER on PER.period_id = ENT.entity_period
-		where spat.isperiodactiveattimestamp(PER.period_empty, PER.period_full, PER.period_value, p_moment)
+		where ENT.element_type in (1,10)
+		and spat.isperiodactiveattimestamp(PER.period_empty, PER.period_full, PER.period_value, p_moment)
 	), active_entities_traits as (
 		select ENT.entity_id, array_agg(TRA.trait) as traits
 		from active_entities ENT 

@@ -1,6 +1,8 @@
 package patterns_test
 
 import (
+	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -135,4 +137,38 @@ func TestPeriodsComplement(t *testing.T) {
 		comparator.CompareInterval(complements[1], expected[1]) != 0 {
 		t.Error("error when taking complement")
 	}
+}
+
+func TestPeriodSerde(t *testing.T) {
+	full := patterns.NewFullPeriod()
+	if result := patterns.SerializePeriod(full, "2006-01-02"); slices.Compare(result, []string{"]-oo;+oo["}) != 0 {
+		t.Errorf("expected ]-oo;+oo[ for full period, got %s", strings.Join(result, ","))
+	}
+
+	empty := patterns.NewEmptyPeriod()
+	if result := patterns.SerializePeriod(empty, "2006-01-02"); slices.Compare(result, []string{"];["}) != 0 {
+		t.Errorf("expected ];[ for empty period, got %s", strings.Join(result, ","))
+	}
+
+	comparator := patterns.NewTimeComparator()
+	now := time.Now().UTC().Truncate(24 * time.Hour)
+	before := now.AddDate(-1, 0, 0)
+	longAgo := before.AddDate(-2, 0, 0)
+	after := now.AddDate(1, 0, 0)
+	leftInterval := comparator.NewLeftInfiniteInterval(longAgo, false)
+	middleInterval, _ := comparator.NewFiniteInterval(before, now, true, true)
+	rightInterval := comparator.NewRightInfiniteInterval(after, false)
+
+	reunion := patterns.NewPeriod(leftInterval)
+	reunion.AddInterval(middleInterval)
+	reunion.AddInterval(rightInterval)
+
+	resultStr := patterns.SerializePeriod(reunion, "2006-01-02")
+	result, errStr := patterns.DeserializePeriod(resultStr, "2006-01-02")
+	if errStr != nil {
+		t.Errorf("error while reading serialized values: %s", errStr.Error())
+	} else if !reunion.IsSameAs(result) {
+		t.Error("serde failure, not same values")
+	}
+
 }

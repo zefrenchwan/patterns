@@ -285,3 +285,44 @@ func (p *Period) Complement() {
 
 	p.elements = result
 }
+
+// SerializePeriod returns the intervals as a string slice
+func SerializePeriod(p Period, dateFormat string) []string {
+	if p.IsEmptyPeriod() {
+		return []string{"];["}
+	} else if p.IsFullPeriod() {
+		return []string{"]-oo;+oo["}
+	}
+
+	result := make([]string, 0)
+	for _, interval := range p.AsIntervals() {
+		if interval.IsEmpty() {
+			continue
+		}
+
+		serializeTime := func(t time.Time) string { return t.Format(dateFormat) }
+		value := interval.SerializeInterval(serializeTime)
+		result = append(result, value)
+	}
+
+	return result
+}
+
+// DeserializePeriod deserializes a periodIntervals as a period
+func DeserializePeriod(periodIntervals []string, dateFormat string) (Period, error) {
+	timeRead := func(s string) (time.Time, error) { return time.Parse(dateFormat, s) }
+
+	period := NewEmptyPeriod()
+	for index, intervalValue := range periodIntervals {
+		interval, errInterval := periodComparator.DeserializeInterval(intervalValue, timeRead)
+		if errInterval != nil {
+			return period, errInterval
+		} else if index == 0 {
+			period = NewPeriod(interval)
+		} else {
+			period.AddInterval(interval)
+		}
+	}
+
+	return period, nil
+}

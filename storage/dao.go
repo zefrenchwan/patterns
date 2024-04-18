@@ -11,8 +11,8 @@ import (
 )
 
 const (
-	// DATE_SERDE_FORMAT is golang representaion of dates. In terms of postgresql, it means YYYY-MM-DD HH24:MI:ss
-	DATE_SERDE_FORMAT = "2006-01-02T15:04:05"
+	// DATE_STORAGE_FORMAT is golang representaion of dates. In terms of postgresql, it means YYYY-MM-DD HH24:MI:ss
+	DATE_STORAGE_FORMAT = "2006-01-02T15:04:05"
 )
 
 // Dao defines all database operations
@@ -122,7 +122,7 @@ func (d *Dao) UpsertRelation(ctx context.Context, r patterns.Relation) error {
 }
 
 // LoadActiveEntitiesAtTime returns active entity values at a given time
-func (d *Dao) LoadActiveEntitiesAtTime(ctx context.Context, moment time.Time, trait string, valuesQuery map[string]string) ([]ActiveEntity, error) {
+func (d *Dao) LoadActiveEntitiesAtTime(ctx context.Context, moment time.Time, trait string, valuesQuery map[string]string) ([]EntityDTO, error) {
 	if d == nil || d.pool == nil {
 		return nil, errors.New("dao not initialized")
 	}
@@ -135,7 +135,7 @@ func (d *Dao) LoadActiveEntitiesAtTime(ctx context.Context, moment time.Time, tr
 		defer rows.Close()
 	}
 
-	activeValues := make(map[string]ActiveEntity)
+	activeValues := make(map[string]EntityDTO)
 
 	var globalErr error
 	for rows.Next() {
@@ -145,7 +145,7 @@ func (d *Dao) LoadActiveEntitiesAtTime(ctx context.Context, moment time.Time, tr
 			globalErr = errors.Join(globalErr, err)
 		}
 
-		newValue := ActiveEntityValue{
+		newValue := EntityValueDTO{
 			AttributeName:  attribute,
 			AttributeValue: value,
 		}
@@ -154,10 +154,10 @@ func (d *Dao) LoadActiveEntitiesAtTime(ctx context.Context, moment time.Time, tr
 			previous.Values = append(previous.Values, newValue)
 			activeValues[id] = previous
 		} else {
-			newEntity := ActiveEntity{
+			newEntity := EntityDTO{
 				Id:     id,
 				Traits: traits,
-				Values: []ActiveEntityValue{newValue},
+				Values: []EntityValueDTO{newValue},
 			}
 
 			activeValues[id] = newEntity
@@ -168,7 +168,7 @@ func (d *Dao) LoadActiveEntitiesAtTime(ctx context.Context, moment time.Time, tr
 		return nil, globalErr
 	}
 
-	result := make([]ActiveEntity, len(activeValues))
+	result := make([]EntityDTO, len(activeValues))
 	index := 0
 
 	for _, value := range activeValues {
@@ -209,7 +209,7 @@ func serializePeriod(p patterns.Period) string {
 
 // serializeTimestamp gets time value and returns it at the plpgsql format
 func serializeTimestamp(t time.Time) string {
-	return t.UTC().Format(DATE_SERDE_FORMAT)
+	return t.UTC().Format(DATE_STORAGE_FORMAT)
 }
 
 // serializeInterval serializes a time interval
