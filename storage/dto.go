@@ -76,6 +76,10 @@ func SerializeElement(e patterns.Element) ElementDTO {
 // DeserializeElement returns an element from a dto
 func DeserializeElement(dto ElementDTO) (patterns.Element, error) {
 	var result patterns.Element
+	if len(dto.Roles) != 0 && len(dto.Attributes) != 0 {
+		return result, errors.New("both relation and entity parts. Not supported")
+	}
+
 	activity, errActive := DeserializePeriodForDTO(dto.Activity)
 	if errActive != nil {
 		return result, errActive

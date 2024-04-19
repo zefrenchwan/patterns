@@ -33,8 +33,18 @@ func NewDao(ctx context.Context, url string) (Dao, error) {
 	return dao, nil
 }
 
+func (d *Dao) UpsertElement(ctx context.Context, e patterns.Element) error {
+	if entity, okEntity := e.(patterns.FormalInstance); okEntity {
+		return d.UpsertEntity(ctx, entity)
+	} else if relation, okRelation := e.(patterns.FormalRelation); okRelation {
+		return d.UpsertRelation(ctx, relation)
+	} else {
+		return errors.New("unsupported element type")
+	}
+}
+
 // UpsertEntity upserts an entity
-func (d *Dao) UpsertEntity(ctx context.Context, e patterns.Entity) error {
+func (d *Dao) UpsertEntity(ctx context.Context, e patterns.FormalInstance) error {
 	if d == nil || d.pool == nil {
 		return errors.New("dao not initialized")
 	}
@@ -84,7 +94,7 @@ func (d *Dao) UpsertEntity(ctx context.Context, e patterns.Entity) error {
 }
 
 // UpsertRelation upserts all the relation (traits, roles)
-func (d *Dao) UpsertRelation(ctx context.Context, r patterns.Relation) error {
+func (d *Dao) UpsertRelation(ctx context.Context, r patterns.FormalRelation) error {
 	if d == nil || d.pool == nil {
 		return errors.New("dao not initialized")
 	}

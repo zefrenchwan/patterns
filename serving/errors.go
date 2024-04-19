@@ -25,3 +25,19 @@ func NewServiceHttpClientError(message string) ServiceHttpError {
 		message:  message,
 	}
 }
+
+// NewServiceUnprocessableEntityError returns a 422 error (unprocessable)
+func NewServiceUnprocessableEntityError(message string) ServiceHttpError {
+	return ServiceHttpError{
+		httpCode: http.StatusUnprocessableEntity,
+		message:  message,
+	}
+}
+
+// NewServiceInternalServerError returns a 500 error with a specific message
+func NewServiceInternalServerError(message string) ServiceHttpError {
+	return ServiceHttpError{
+		httpCode: http.StatusInternalServerError,
+		message:  message,
+	}
+}
