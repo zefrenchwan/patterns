@@ -44,7 +44,7 @@ func NewActiveTimeValues() ActiveTimeValues {
 
 // ContainsAttribute returns true if receiver is not nil and it contains a non nil entry with that key
 func (i TimeValues) ContainsAttribute(attr string) bool {
-	switch value, found := i["attr"]; found {
+	switch value, found := i[attr]; found {
 	case true:
 		return value != nil
 	default:

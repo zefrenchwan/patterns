@@ -2,6 +2,7 @@ package storage
 
 import (
 	"errors"
+	"slices"
 
 	"github.com/zefrenchwan/patterns.git/patterns"
 )
@@ -97,4 +98,38 @@ func DerializeEntity(dto EntityDTO) (patterns.Entity, error) {
 	}
 
 	return result, globalErr
+}
+
+// SerializeRelation serializes a relation to a dto (then a json)
+func SerializeRelation(r patterns.Relation) RelationDTO {
+	var result RelationDTO
+	result.Id = r.Id()
+	result.Activity = SerializePeriodsForDTO(r.ActivePeriod())
+	result.Traits = append(result.Traits, r.Traits()...)
+
+	result.Roles = make(map[string][]string)
+	for role, values := range r.GetValuesPerRole() {
+		result.Roles[role] = slices.Clone(values)
+	}
+
+	return result
+}
+
+// DeserializeRelation reads a dto to build a relation
+func DeserializeRelation(r RelationDTO) (patterns.Relation, error) {
+	var result patterns.Relation
+
+	var period patterns.Period
+	if len(r.Activity) == 0 {
+		period = patterns.NewEmptyPeriod()
+	} else if p, err := DeserializePeriodForDTO(r.Activity); err != nil {
+		return result, err
+	} else {
+		period = p
+	}
+
+	result = patterns.NewRelationWithIdAndRoles(r.Id, r.Traits, r.Roles)
+	result.SetActivePeriod(period)
+
+	return result, nil
 }

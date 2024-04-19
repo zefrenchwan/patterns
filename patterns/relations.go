@@ -68,6 +68,21 @@ func NewRelation(subject string, traits []string) Relation {
 	return NewRelationWithId(uuid.NewString(), subject, traits)
 }
 
+// NewRelationWithIdAndRoles builds a new relation with id, traits and roles
+func NewRelationWithIdAndRoles(id string, traits []string, roles map[string][]string) Relation {
+	result := NewUnlinkedRelationWithId(id, traits)
+	result.links = make(map[string][]string)
+	for role, values := range roles {
+		if len(values) == 0 {
+			continue
+		}
+
+		result.links[role] = slices.Clone(values)
+	}
+
+	return result
+}
+
 // NewTimeDependentRelation returns a relation true for a given period
 func NewTimeDependentRelation(subject string, traits []string, period Period) Relation {
 	result := NewRelation(subject, traits)
@@ -260,7 +275,7 @@ func (r *Relation) SetActivePeriod(period Period) error {
 		return errors.New("nil relation")
 	}
 
-	r.activity.Remove(period)
+	r.activity = NewPeriodCopy(period)
 	return nil
 }
 
