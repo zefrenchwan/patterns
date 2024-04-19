@@ -36,7 +36,7 @@ func loadActiveEntitiesAtDateHandler(wrapper ServiceParameters, writer http.Resp
 
 	activeValues, errLoad := wrapper.Dao.LoadActiveEntitiesAtTime(wrapper.Ctx, moment, trait, queryValues)
 	if errLoad != nil {
-		return errLoad
+		return NewServiceInternalServerError("failed to load: " + errLoad.Error())
 	}
 
 	json.NewEncoder(writer).Encode(activeValues)
@@ -61,7 +61,7 @@ func loadActiveEntitiesHandler(wrapper ServiceParameters, writer http.ResponseWr
 
 	activeValues, errLoad := wrapper.Dao.LoadActiveEntitiesAtTime(wrapper.Ctx, time.Now().UTC(), trait, queryValues)
 	if errLoad != nil {
-		return errLoad
+		return NewServiceInternalServerError("failed to load: " + errLoad.Error())
 	}
 
 	json.NewEncoder(writer).Encode(activeValues)

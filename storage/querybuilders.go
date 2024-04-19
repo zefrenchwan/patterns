@@ -10,10 +10,10 @@ func queryForEntitiesAtDate(trait string, valuesQuery map[string]string) string 
 	with all_active_values as (
 		select * 
 		from spat.activeentitiesvaluesat($1)
-		)
-		select * 
-		from all_active_values AAV
-		where '%s' = ANY (AAV.traits)
+	)
+	select * 
+	from all_active_values AAV
+	where '%s' = ANY (AAV.traits)
 	`
 
 	query := fmt.Sprintf(base, trait)

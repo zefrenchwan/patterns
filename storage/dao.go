@@ -151,18 +151,55 @@ func (d *Dao) LoadActiveEntitiesAtTime(ctx context.Context, moment time.Time, tr
 	for rows.Next() {
 		var id, attribute, value string
 		var traits []string
-		if err := rows.Scan(&id, &attribute, &value, &traits); err != nil {
+		hasAttribute := false
+
+		// fill values, attribute and value may be null from the database.
+		// If so, using a scan will raise an error.
+		if rawValues, err := rows.Values(); err != nil {
 			globalErr = errors.Join(globalErr, err)
+			continue
+		} else {
+			id = rawValues[0].(string)
+			// traits are read as []interface{}
+			if rawValues[3] != nil {
+				rawTraits := rawValues[3].([]any)
+				for _, rawTrait := range rawTraits {
+					if rawTrait == nil {
+						continue
+					}
+
+					newTrait := rawTrait.(string)
+					traits = append(traits, newTrait)
+				}
+			}
+
+			// finally, read attribute
+			if rawValues[1] == nil {
+				hasAttribute = false
+			} else {
+				attribute = rawValues[1].(string)
+				if rawValues[2] != nil {
+					value = rawValues[2].(string)
+				}
+			}
 		}
 
+		// create it, may not add it
 		newValue := EntityValueDTO{
 			AttributeName:  attribute,
 			AttributeValue: value,
 		}
 
-		if previous, found := activeValues[id]; found {
+		if previous, found := activeValues[id]; found && hasAttribute {
 			previous.Attributes = append(previous.Attributes, newValue)
 			activeValues[id] = previous
+		} else if !hasAttribute {
+			newEntity := ElementDTO{
+				Id:     id,
+				Traits: traits,
+			}
+
+			activeValues[id] = newEntity
 		} else {
 			newEntity := ElementDTO{
 				Id:         id,

@@ -606,13 +606,13 @@ return query
 	active_entities as (
 		select ENT.element_id as entity_id
 		from spat.elements ENT 
-		join spat.periods PER on PER.period_id = ENT.entity_period
+		join spat.periods PER on PER.period_id = ENT.element_period
 		where ENT.element_type in (1,10)
 		and spat.isperiodactiveattimestamp(PER.period_empty, PER.period_full, PER.period_value, p_moment)
 	), active_entities_traits as (
 		select ENT.entity_id, array_agg(TRA.trait) as traits
 		from active_entities ENT 
-		join spat.entity_trait ETA on ETA.entity_id = ENT.entity_id
+		join spat.element_trait ETA on ETA.element_id = ENT.entity_id
 		join spat.traits TRA on TRA.trait_id = ETA.trait_id
 		group by ENT.entity_id
 	), active_attributes as (

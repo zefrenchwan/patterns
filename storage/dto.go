@@ -12,10 +12,11 @@ const (
 	DATE_SERDE_FORMAT = "2006-01-02T15:04:05"
 )
 
+// ElementDTO regroups entity and relation content into a single DTO
 type ElementDTO struct {
 	Id       string   `json:"id"`
-	Traits   []string `json:"traits"`
-	Activity []string `json:"activity"`
+	Traits   []string `json:"traits,omitempty"`
+	Activity []string `json:"activity,omitempty"`
 
 	Attributes []EntityValueDTO    `json:"attributess,omitempty"`
 	Roles      map[string][]string `json:"roles,omitempty"`
