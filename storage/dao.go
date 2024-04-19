@@ -122,7 +122,7 @@ func (d *Dao) UpsertRelation(ctx context.Context, r patterns.Relation) error {
 }
 
 // LoadActiveEntitiesAtTime returns active entity values at a given time
-func (d *Dao) LoadActiveEntitiesAtTime(ctx context.Context, moment time.Time, trait string, valuesQuery map[string]string) ([]EntityDTO, error) {
+func (d *Dao) LoadActiveEntitiesAtTime(ctx context.Context, moment time.Time, trait string, valuesQuery map[string]string) ([]ElementDTO, error) {
 	if d == nil || d.pool == nil {
 		return nil, errors.New("dao not initialized")
 	}
@@ -135,7 +135,7 @@ func (d *Dao) LoadActiveEntitiesAtTime(ctx context.Context, moment time.Time, tr
 		defer rows.Close()
 	}
 
-	activeValues := make(map[string]EntityDTO)
+	activeValues := make(map[string]ElementDTO)
 
 	var globalErr error
 	for rows.Next() {
@@ -151,13 +151,13 @@ func (d *Dao) LoadActiveEntitiesAtTime(ctx context.Context, moment time.Time, tr
 		}
 
 		if previous, found := activeValues[id]; found {
-			previous.Values = append(previous.Values, newValue)
+			previous.Attributes = append(previous.Attributes, newValue)
 			activeValues[id] = previous
 		} else {
-			newEntity := EntityDTO{
-				Id:     id,
-				Traits: traits,
-				Values: []EntityValueDTO{newValue},
+			newEntity := ElementDTO{
+				Id:         id,
+				Traits:     traits,
+				Attributes: []EntityValueDTO{newValue},
 			}
 
 			activeValues[id] = newEntity
@@ -168,7 +168,7 @@ func (d *Dao) LoadActiveEntitiesAtTime(ctx context.Context, moment time.Time, tr
 		return nil, globalErr
 	}
 
-	result := make([]EntityDTO, len(activeValues))
+	result := make([]ElementDTO, len(activeValues))
 	index := 0
 
 	for _, value := range activeValues {

@@ -5,7 +5,7 @@ package patterns
 // An entity describes a real world object
 type Element interface {
 	// Id returns the (unique) id of the element
-	Id()
+	Id() string
 
 	// ActivePeriod returns the period the element was active during
 	ActivePeriod() Period

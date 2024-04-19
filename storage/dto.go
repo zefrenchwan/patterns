@@ -12,12 +12,13 @@ const (
 	DATE_SERDE_FORMAT = "2006-01-02T15:04:05"
 )
 
-// EntityDTO is a DTO to deal with entities
-type EntityDTO struct {
-	Id       string           `json:"id"`
-	Traits   []string         `json:"traits"`
-	Values   []EntityValueDTO `json:"values"`
-	Activity []string         `json:"activity,omitempty"`
+type ElementDTO struct {
+	Id       string   `json:"id"`
+	Traits   []string `json:"traits"`
+	Activity []string `json:"activity"`
+
+	Attributes []EntityValueDTO    `json:"attributess,omitempty"`
+	Roles      map[string][]string `json:"roles,omitempty"`
 }
 
 // EntityValueDTO is a DTO for entity values
@@ -27,12 +28,9 @@ type EntityValueDTO struct {
 	Periods        []string `json:"vaiidity,omitempty"`
 }
 
-// RelationDTO is a DTO for relations
-type RelationDTO struct {
-	Id       string              `json:"id"`
-	Traits   []string            `json:"traits"`
-	Activity []string            `json:"activity,omitempty"`
-	Roles    map[string][]string `json:"roles,omitempty"`
+// IsEntityDTO returns true for an entity
+func (e ElementDTO) IsEntityDTO() bool {
+	return len(e.Roles) == 0
 }
 
 // SerializePeriodsForDTO returns the serialized period as a slice, one value per interval
@@ -45,91 +43,72 @@ func DeserializePeriodForDTO(intervals []string) (patterns.Period, error) {
 	return patterns.DeserializePeriod(intervals, DATE_SERDE_FORMAT)
 }
 
-// SerializeEntity returns the dto from an entity
-func SerializeEntity(e patterns.Entity) EntityDTO {
-	var dto EntityDTO
+// SerializeElement returns the dto content
+func SerializeElement(e patterns.Element) ElementDTO {
+	var dto ElementDTO
 	dto.Id = e.Id()
 	dto.Traits = append(dto.Traits, e.Traits()...)
 	dto.Activity = SerializePeriodsForDTO(e.ActivePeriod())
 
-	for _, attr := range e.Attributes() {
-		attributeValues, _ := e.PeriodValuesForAttribute(attr)
-		for attributeValue, periodValue := range attributeValues {
-			value := EntityValueDTO{
-				AttributeName:  attr,
-				AttributeValue: attributeValue,
-				Periods:        SerializePeriodsForDTO(periodValue),
-			}
+	if relation, ok := e.(patterns.FormalRelation); ok {
+		dto.Roles = make(map[string][]string)
+		for role, values := range relation.GetValuesPerRole() {
+			dto.Roles[role] = slices.Clone(values)
+		}
+	} else if entity, ok := e.(*patterns.Entity); ok {
+		for _, attr := range entity.Attributes() {
+			attributeValues, _ := entity.PeriodValuesForAttribute(attr)
+			for attributeValue, periodValue := range attributeValues {
+				value := EntityValueDTO{
+					AttributeName:  attr,
+					AttributeValue: attributeValue,
+					Periods:        SerializePeriodsForDTO(periodValue),
+				}
 
-			dto.Values = append(dto.Values, value)
+				dto.Attributes = append(dto.Attributes, value)
+			}
 		}
 	}
 
 	return dto
 }
 
-// DeserializeEntity reads a dto and parses it to make an entity
-func DerializeEntity(dto EntityDTO) (patterns.Entity, error) {
-	var result patterns.Entity
+// DeserializeElement returns an element from a dto
+func DeserializeElement(dto ElementDTO) (patterns.Element, error) {
+	var result patterns.Element
 	activity, errActive := DeserializePeriodForDTO(dto.Activity)
 	if errActive != nil {
 		return result, errActive
-	} else if newResult, err := patterns.NewEntityWithId(dto.Id, dto.Traits, activity); err != nil {
-		return result, err
-	} else {
-		result = newResult
-	}
-
-	if len(dto.Values) == 0 {
-		return result, nil
 	}
 
 	var globalErr error
-	for _, value := range dto.Values {
-		if len(value.Periods) == 0 {
-			continue
-		} else if attrPeriod, errPeriod := DeserializePeriodForDTO(value.Periods); errPeriod != nil {
-			globalErr = errors.Join(globalErr, errPeriod)
-		} else if attrPeriod.IsEmptyPeriod() {
-			continue
-		} else if err := result.AddValue(value.AttributeName, value.AttributeValue, attrPeriod); err != nil {
-			globalErr = errors.Join(globalErr, errPeriod)
+	id := dto.Id
+	roles := dto.Roles
+	if len(roles) != 0 {
+		relation := patterns.NewRelationWithIdAndRoles(id, dto.Traits, roles)
+		if err := relation.SetActivePeriod(activity); err != nil {
+			return result, err
 		}
-	}
 
-	return result, globalErr
-}
-
-// SerializeRelation serializes a relation to a dto (then a json)
-func SerializeRelation(r patterns.Relation) RelationDTO {
-	var result RelationDTO
-	result.Id = r.Id()
-	result.Activity = SerializePeriodsForDTO(r.ActivePeriod())
-	result.Traits = append(result.Traits, r.Traits()...)
-
-	result.Roles = make(map[string][]string)
-	for role, values := range r.GetValuesPerRole() {
-		result.Roles[role] = slices.Clone(values)
-	}
-
-	return result
-}
-
-// DeserializeRelation reads a dto to build a relation
-func DeserializeRelation(r RelationDTO) (patterns.Relation, error) {
-	var result patterns.Relation
-
-	var period patterns.Period
-	if len(r.Activity) == 0 {
-		period = patterns.NewEmptyPeriod()
-	} else if p, err := DeserializePeriodForDTO(r.Activity); err != nil {
-		return result, err
+		return &relation, nil
 	} else {
-		period = p
+		entity, errEntity := patterns.NewEntityWithId(id, dto.Traits, activity)
+		if errEntity != nil {
+			return result, errEntity
+		}
+
+		for _, value := range dto.Attributes {
+			if len(value.Periods) == 0 {
+				continue
+			} else if attrPeriod, errPeriod := DeserializePeriodForDTO(value.Periods); errPeriod != nil {
+				globalErr = errors.Join(globalErr, errPeriod)
+			} else if attrPeriod.IsEmptyPeriod() {
+				continue
+			} else if err := entity.AddValue(value.AttributeName, value.AttributeValue, attrPeriod); err != nil {
+				globalErr = errors.Join(globalErr, errPeriod)
+			}
+		}
+
+		return &entity, globalErr
 	}
-
-	result = patterns.NewRelationWithIdAndRoles(r.Id, r.Traits, r.Roles)
-	result.SetActivePeriod(period)
-
-	return result, nil
 }

@@ -20,28 +20,33 @@ func TestEntitySerde(t *testing.T) {
 	entity.AddValue("last name", "MEEE", leftPeriod)
 	entity.AddValue("first name", "Me", rightPeriod)
 
-	dto := storage.SerializeEntity(entity)
-	reverse, errReverse := storage.DerializeEntity(dto)
+	var reverseEntity *patterns.Entity
+	dto := storage.SerializeElement(&entity)
+	reverse, errReverse := storage.DeserializeElement(dto)
 	if errReverse != nil {
 		t.Errorf("failing deserialization %s", errReverse.Error())
 	} else if reverse.Id() != entity.Id() {
 		t.Fail()
 	} else if slices.Compare(entity.Traits(), reverse.Traits()) != 0 {
 		t.Fail()
-	} else if len(reverse.Attributes()) != 2 {
-		t.Fail()
-	} else if !reverse.ContainsAttribute("first name") {
-		t.Fail()
-	} else if !reverse.ContainsAttribute("last name") {
-		t.Fail()
+	} else if r, ok := reverse.(*patterns.Entity); !ok {
+		t.Error("invalid type found")
+	} else {
+		reverseEntity = r
 	}
 
-	period := reverse.ActivePeriod()
+	period := reverseEntity.ActivePeriod()
 	if !period.IsFullPeriod() {
 		t.Fail()
+	} else if len(reverseEntity.Attributes()) != 2 {
+		t.Fail()
+	} else if !reverseEntity.ContainsAttribute("first name") {
+		t.Fail()
+	} else if !reverseEntity.ContainsAttribute("last name") {
+		t.Fail()
 	}
 
-	values, errValues := reverse.PeriodValuesForAttribute("first name")
+	values, errValues := reverseEntity.PeriodValuesForAttribute("first name")
 	if errValues != nil {
 		t.Fail()
 	} else if len(values) != 1 {
@@ -52,7 +57,7 @@ func TestEntitySerde(t *testing.T) {
 		t.Fail()
 	}
 
-	values, errValues = reverse.PeriodValuesForAttribute("last name")
+	values, errValues = reverseEntity.PeriodValuesForAttribute("last name")
 	if errValues != nil {
 		t.Fail()
 	} else if len(values) != 1 {
@@ -77,8 +82,8 @@ func TestRelationSerde(t *testing.T) {
 	relation := patterns.NewRelationWithIdAndRoles("popo", []string{"Couple"}, links)
 	relation.SetActivePeriod(leftPeriod)
 
-	dto := storage.SerializeRelation(relation)
-	reverse, ErrReverse := storage.DeserializeRelation(dto)
+	dto := storage.SerializeElement(&relation)
+	reverse, ErrReverse := storage.DeserializeElement(dto)
 	if ErrReverse != nil {
 		t.Errorf("error while deserialize: %s", ErrReverse.Error())
 	}
@@ -90,7 +95,14 @@ func TestRelationSerde(t *testing.T) {
 		t.Fail()
 	}
 
-	reverseRoles := reverse.GetValuesPerRole()
+	var reverseRelation *patterns.Relation
+	if r, ok := reverse.(*patterns.Relation); !ok {
+		t.Error("invalid dto type")
+	} else {
+		reverseRelation = r
+	}
+
+	reverseRoles := reverseRelation.GetValuesPerRole()
 	if len(reverseRoles) != len(links) {
 		t.Fail()
 	}
