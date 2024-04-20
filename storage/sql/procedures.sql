@@ -630,3 +630,89 @@ return query
 end; $$; 
 
 alter function spat.ActiveEntitiesValuesAt owner to upa;
+
+-- spat.ElementRelationsCountAtMoment returns the number of matches per trait, role and active status of an element id at a given time. 
+-- For instance, let X be a person with N followers (A active, B inactive), result would be 
+-- follower | subject | true  | A 
+-- follower | subject | false | B
+create or replace function spat.ElementRelationsCountAtMoment(
+	p_id text, p_moment timestamp without time zone 
+) returns table(relation_trait text, relation_role text, active_relation bool, counter bigint)
+language plpgsql as $$
+begin
+return query 
+with 
+current_neighborhoods as (
+	select distinct 
+	ELT.element_id as relation_id, 
+	spat.isperiodactiveattimestamp(PER.period_empty, PER.period_full, period_value, p_moment) as active_relation,
+	RRO.role_in_relation
+	from spat.elements ELT
+	join spat.periods PER on PER.period_id = ELT.element_period
+	join spat.relation_role RRO on ELT.element_id = RRO.relation_id
+	where not PER.period_empty 
+	and p_id = ANY (RRO.role_values)
+),
+current_neighborhoods_traits as (
+	select distinct 
+	relation_id, TRA.trait, CUR.role_in_relation, CUR.active_relation
+	from current_neighborhoods CUR
+	left outer join spat.element_trait ETA on CUR.relation_id = ETA.element_id
+	left outer join spat.traits TRA on TRA.trait_id = ETA.trait_id
+)
+select 
+CNT.trait as relation_trait, 
+CNT.role_in_relation as relation_role, 
+CNT.active_relation as active_relation, 
+count(distinct CNT.relation_id) as counter
+from current_neighborhoods_traits CNT
+group by CNT.trait, CNT.role_in_relation, CNT.active_relation;
+end; $$;
+
+alter function spat.ElementRelationsCountAtMoment owner to upa;
+
+-- spat.ElementRelationsOperandsCountAtMoment details, for each relation with this id as a parameter, 
+-- the traits, roles, activity and values (sorted to avoid permutations explosion) at a given time. 
+-- It is basically  spat.ElementRelationsCountAtMoment with sorted operands. 
+create or replace function spat.ElementRelationsOperandsCountAtMoment(
+	p_id text, p_moment timestamp without time zone 
+) returns table(relation_trait text, relation_role text, active_relation bool, relation_sorted_values text[], counter bigint)
+language plpgsql as $$
+begin
+return query 
+with 
+current_neighborhoods as (
+	select 
+	ELT.element_id as relation_id, 
+	spat.isperiodactiveattimestamp(PER.period_empty, PER.period_full, period_value, p_moment) as active_relation,
+	RRO.role_in_relation, 
+	unnest(RRO.role_values) as role_operand
+	from spat.elements ELT
+	join spat.periods PER on PER.period_id = ELT.element_period
+	join spat.relation_role RRO on ELT.element_id = RRO.relation_id
+	where not PER.period_empty 
+	and p_id = ANY (RRO.role_values)
+),
+current_aggregated_neighbors as (
+	select relation_id, CUR.role_in_relation, CUR.active_relation, 
+	array_agg(CUR.role_operand order by CUR.relation_id, CUR.role_in_relation, CUR.active_relation, CUR.role_operand) as role_operands
+	from current_neighborhoods CUR
+	group by CUR.relation_id, CUR.role_in_relation, CUR.active_relation
+),
+current_neighborhoods_traits as (
+	select relation_id, TRA.trait, CUR.role_in_relation, CUR.active_relation, role_operands
+	from current_aggregated_neighbors CUR
+	left outer join spat.element_trait ETA on CUR.relation_id = ETA.element_id
+	left outer join spat.traits TRA on TRA.trait_id = ETA.trait_id
+)
+select 
+CNT.trait as relation_trait, 
+CNT.role_in_relation as relation_role, 
+CNT.active_relation as active_relation, 
+CNT.role_operands as relation_sorted_values, 
+count(distinct CNT.relation_id) as counter
+from current_neighborhoods_traits CNT
+group by CNT.trait, CNT.role_in_relation, CNT.active_relation, CNT.role_operands;
+end; $$;
+
+alter function spat.ElementRelationsOperandsCountAtMoment owner to upa;
