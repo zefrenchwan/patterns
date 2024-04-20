@@ -196,11 +196,11 @@ begin
 		insert into spat.elements(element_id, element_type, element_period) 
 		values (p_id, p_type, l_period);
 	else		
-		select entity_period into l_previousperiod
+		select element_period into l_previousperiod
 		from spat.elements where element_id = p_id;
 
 		call spat.setperiod(p_activity, l_period);
-		update spat.element set element_period = l_period;
+		update spat.elements set element_period = l_period;
 		delete from spat.periods where period_id = l_previousperiod;
 	end if;
 	
@@ -265,7 +265,7 @@ create or replace procedure spat.UpsertRoleInRelation(
 declare 
 begin 
 
-	if not exists (select 1 from spat.relations where relation_id = p_id) then 
+	if not exists (select 1 from spat.elements where element_id = p_id) then 
 		raise exception 'relation does not exist (cannot create due to missing period)';
 	end if;
 	

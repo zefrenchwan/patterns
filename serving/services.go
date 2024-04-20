@@ -25,6 +25,8 @@ func InitService(dao storage.Dao) *http.ServeMux {
 	// SNAPSHOT PART
 	AddGetServiceHandlerToMux(mux, "/snapshot/entities/trait/{trait}", loadActiveEntitiesHandler, parameters)
 	AddGetServiceHandlerToMux(mux, "/snapshot/entities/trait/{trait}/moment/{moment}", loadActiveEntitiesAtDateHandler, parameters)
+	AddGetServiceHandlerToMux(mux, "/snapshot/neighbors/counters/id/{id}", loadRelationsStatsAroundElementHandler, parameters)
+	AddGetServiceHandlerToMux(mux, "/snapshot/neighbors/counters/id/{id}/moment/{moment}", loadRelationsStatsAroundElementAtDateHandler, parameters)
 	// END OF HANDLERS MODIFICATION
 
 	// mux is complete, all handlers are set

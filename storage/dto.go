@@ -12,6 +12,18 @@ const (
 	DATE_SERDE_FORMAT = "2006-01-02T15:04:05"
 )
 
+// RelationalStatstDTO provides, for an id at a given time, the stats about its relationships
+type RelationalStatstDTO struct {
+	// Trait of the relations
+	Trait string `json:"trait,omitempty"`
+	// Role of the element within the relations
+	Role string `json:"role"`
+	// Active is true if the period for the relations is active
+	Active bool `json:"active"`
+	// Counter is the number of matching relations with this criteria
+	Counter int64 `json:"counter"`
+}
+
 // ElementDTO regroups entity and relation content into a single DTO
 type ElementDTO struct {
 	Id       string   `json:"id"`

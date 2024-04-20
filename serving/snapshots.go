@@ -67,3 +67,44 @@ func loadActiveEntitiesHandler(wrapper ServiceParameters, writer http.ResponseWr
 	json.NewEncoder(writer).Encode(activeValues)
 	return nil
 }
+
+func loadRelationsStatsAroundElementHandler(wrapper ServiceParameters, writer http.ResponseWriter, request *http.Request) error {
+	defer request.Body.Close()
+
+	id := request.PathValue("id")
+	moment := time.Now().UTC()
+
+	dtos, errLoading := wrapper.Dao.LoadElementRelationsCountAtMoment(wrapper.Ctx, id, moment)
+	if errLoading != nil {
+		return NewServiceInternalServerError(errLoading.Error())
+	}
+
+	json.NewEncoder(writer).Encode(dtos)
+	return nil
+}
+
+func loadRelationsStatsAroundElementAtDateHandler(wrapper ServiceParameters, writer http.ResponseWriter, request *http.Request) error {
+	defer request.Body.Close()
+
+	id := request.PathValue("id")
+	momentStr := request.PathValue("moment")
+
+	var moment time.Time
+	if m, err := time.Parse(DATE_WS_FORMAT, momentStr); err != nil {
+		return NewServiceHttpClientError(err.Error())
+	} else {
+		moment = m
+	}
+
+	dtos, errLoading := wrapper.Dao.LoadElementRelationsCountAtMoment(wrapper.Ctx, id, moment)
+	if errLoading != nil {
+		return NewServiceInternalServerError(errLoading.Error())
+	}
+
+	json.NewEncoder(writer).Encode(dtos)
+	return nil
+}
+
+func loadRelationsStatsWithOperandsAroundElement(wrapper ServiceParameters, writer http.ResponseWriter, request *http.Request) error {
+	return nil
+}
