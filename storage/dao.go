@@ -265,6 +265,59 @@ func (d *Dao) LoadElementRelationsCountAtMoment(ctx context.Context, id string, 
 	return stats, nil
 }
 
+func (d *Dao) LoadElementRelationsOperandsCountAtMoment(ctx context.Context, id string, moment time.Time) ([]RelationalOperandsStatstDTO, error) {
+	if d == nil || d.pool == nil {
+		return nil, errors.New("dao not initialized")
+	}
+
+	query := "select * from spat.ElementRelationsOperandsCountAtMoment($1, $2)"
+	rows, errRows := d.pool.Query(ctx, query, id, moment)
+	if errRows != nil {
+		return nil, errRows
+	} else {
+		defer rows.Close()
+	}
+
+	stats := make([]RelationalOperandsStatstDTO, 0)
+
+	var globalErr error
+	for rows.Next() {
+		if rawValues, err := rows.Values(); err != nil {
+			globalErr = errors.Join(globalErr, err)
+			continue
+		} else if rawValues[0] == nil {
+			rolesValues := make([]string, 0)
+			values := rawValues[3].([]any)
+			for _, value := range values {
+				rolesValues = append(rolesValues, value.(string))
+			}
+
+			stats = append(stats, RelationalOperandsStatstDTO{
+				Role:     rawValues[1].(string),
+				Active:   rawValues[2].(bool),
+				Operands: rolesValues,
+				Counter:  rawValues[4].(int64),
+			})
+		} else {
+			rolesValues := make([]string, 0)
+			values := rawValues[3].([]any)
+			for _, value := range values {
+				rolesValues = append(rolesValues, value.(string))
+			}
+
+			stats = append(stats, RelationalOperandsStatstDTO{
+				Trait:    rawValues[0].(string),
+				Role:     rawValues[1].(string),
+				Active:   rawValues[2].(bool),
+				Operands: rolesValues,
+				Counter:  rawValues[4].(int64),
+			})
+		}
+	}
+
+	return stats, nil
+}
+
 // Close closes the dao and the underlying pool
 func (d *Dao) Close() {
 	if d != nil && d.pool != nil {

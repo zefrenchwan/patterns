@@ -68,6 +68,8 @@ func loadActiveEntitiesHandler(wrapper ServiceParameters, writer http.ResponseWr
 	return nil
 }
 
+// loadRelationsStatsAroundElementHandler loads relation basic stats (trait, role but not operands, active status, counter)
+// for a given id, assuming time is now
 func loadRelationsStatsAroundElementHandler(wrapper ServiceParameters, writer http.ResponseWriter, request *http.Request) error {
 	defer request.Body.Close()
 
@@ -83,6 +85,8 @@ func loadRelationsStatsAroundElementHandler(wrapper ServiceParameters, writer ht
 	return nil
 }
 
+// loadRelationsStatsAroundElementHandler loads relation basic stats (trait, role but not operands, active status, counter)
+// for a given id and a specific moment
 func loadRelationsStatsAroundElementAtDateHandler(wrapper ServiceParameters, writer http.ResponseWriter, request *http.Request) error {
 	defer request.Body.Close()
 
@@ -105,6 +109,43 @@ func loadRelationsStatsAroundElementAtDateHandler(wrapper ServiceParameters, wri
 	return nil
 }
 
-func loadRelationsStatsWithOperandsAroundElement(wrapper ServiceParameters, writer http.ResponseWriter, request *http.Request) error {
+// loadRelationsStatsWithOperandsAroundElementHandler returns a json containing detailled relation stats
+// around a given element (by id) at now
+func loadRelationsStatsWithOperandsAroundElementHandler(wrapper ServiceParameters, writer http.ResponseWriter, request *http.Request) error {
+	defer request.Body.Close()
+
+	id := request.PathValue("id")
+	moment := time.Now().UTC()
+
+	dtos, errLoading := wrapper.Dao.LoadElementRelationsOperandsCountAtMoment(wrapper.Ctx, id, moment)
+	if errLoading != nil {
+		return NewServiceInternalServerError(errLoading.Error())
+	}
+
+	json.NewEncoder(writer).Encode(dtos)
+	return nil
+}
+
+// loadRelationsStatsWithOperandsAroundElementHandler returns a json containing detailled relation stats
+// around a given element (by id) at a given moment (by moment)
+func loadRelationsStatsWithOperandsAroundElementAtDateHandler(wrapper ServiceParameters, writer http.ResponseWriter, request *http.Request) error {
+	defer request.Body.Close()
+
+	id := request.PathValue("id")
+	momentStr := request.PathValue("moment")
+
+	var moment time.Time
+	if m, err := time.Parse(DATE_WS_FORMAT, momentStr); err != nil {
+		return NewServiceHttpClientError(err.Error())
+	} else {
+		moment = m
+	}
+
+	dtos, errLoading := wrapper.Dao.LoadElementRelationsOperandsCountAtMoment(wrapper.Ctx, id, moment)
+	if errLoading != nil {
+		return NewServiceInternalServerError(errLoading.Error())
+	}
+
+	json.NewEncoder(writer).Encode(dtos)
 	return nil
 }

@@ -24,6 +24,20 @@ type RelationalStatstDTO struct {
 	Counter int64 `json:"counter"`
 }
 
+// RelationalOperandsStatstDTO contains stats about relations around an element, including operands
+type RelationalOperandsStatstDTO struct {
+	// Trait of the relations
+	Trait string `json:"trait,omitempty"`
+	// Role of the element within the relations
+	Role string `json:"role"`
+	// Active is true if the period for the relations is active
+	Active bool `json:"active"`
+	// Operands contains all the operands of the relation
+	Operands []string `json:"operands"`
+	// Counter is the number of matching relations with this criteria
+	Counter int64 `json:"counter"`
+}
+
 // ElementDTO regroups entity and relation content into a single DTO
 type ElementDTO struct {
 	Id       string   `json:"id"`

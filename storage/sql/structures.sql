@@ -29,7 +29,8 @@ insert into spat.reftypes(reftype_id, reftype_description) values(10, 'mixed');
 create table spat.traits (
 	trait_id bigserial primary key, 
 	trait_type int references spat.reftypes(reftype_id),
-	trait text not null
+	trait text not null,
+	last_update timestamp without time zone default now()::timestamp without time zone
 );
 
 alter table spat.traits owner to upa;
@@ -51,7 +52,8 @@ alter table spat.periods owner to upa;
 
 create table spat.patterns (
     pattern_id bigserial primary key, 
-    pattern_name text unique not null
+    pattern_name text unique not null,
+	last_update timestamp without time zone default now()::timestamp without time zone
 );
 
 alter table spat.patterns owner to upa;
@@ -59,7 +61,8 @@ alter table spat.patterns owner to upa;
 -- links a pattern to one of its parents
 create table spat.pattern_links (
     subpattern_id bigint references spat.patterns(pattern_id),
-    superpattern_id bigint references spat.patterns(pattern_id)
+    superpattern_id bigint references spat.patterns(pattern_id),
+	last_update timestamp without time zone default now()::timestamp without time zone
 );
 
 alter table spat.pattern_links owner to upa;
@@ -70,7 +73,8 @@ create table spat.mdlinks (
 	pattern_id bigint references spat.patterns(pattern_id),
 	reftype int references spat.reftypes(reftype_id),
 	subtrait_id bigint references spat.traits(trait_id),
-	supertrait_id bigint references spat.traits(trait_id)
+	supertrait_id bigint references spat.traits(trait_id),
+	last_update timestamp without time zone default now()::timestamp without time zone
 );
 
 alter table spat.mdlinks owner to upa;
@@ -80,7 +84,8 @@ create table spat.mdroles (
 	pattern_id bigint references spat.patterns(pattern_id),
 	relation_trait_id bigint references spat.traits(trait_id),
 	role_in_relation text not null,
-	trait_id bigint references spat.traits(trait_id)
+	trait_id bigint references spat.traits(trait_id),
+	last_update timestamp without time zone default now()::timestamp without time zone
 );
 
 alter table spat.mdroles owner to upa;
@@ -97,7 +102,8 @@ alter table spat.mdroles owner to upa;
 create table spat.elements (
 	element_id text primary key,
 	element_type int not null references spat.reftypes(reftype_id),
-	element_period bigint references spat.periods(period_id)
+	element_period bigint references spat.periods(period_id),
+	last_update timestamp without time zone default now()::timestamp without time zone
 );
 
 alter table spat.elements owner to upa;
@@ -105,7 +111,8 @@ alter table spat.elements owner to upa;
 -- spat.element_trait links an element and a trait 
 create table spat.element_trait (
 	element_id text references spat.elements(element_id) on delete cascade,
-	trait_id bigint references spat.traits(trait_id)
+	trait_id bigint references spat.traits(trait_id),
+	last_update timestamp without time zone default now()::timestamp without time zone
 );
 
 alter table spat.element_trait owner to upa;
@@ -116,7 +123,8 @@ create table spat.entity_attributes (
 	entity_id text references spat.elements(element_id) on delete cascade,
 	attribute_name text not null, 
 	attribute_value text not null, 
-	period_id bigint references spat.periods(period_id) on delete cascade
+	period_id bigint references spat.periods(period_id) on delete cascade,
+	last_update timestamp without time zone default now()::timestamp without time zone
 );
 
 alter table spat.entity_attributes owner to upa;
@@ -126,7 +134,8 @@ create table spat.relation_role (
 	relation_role_id bigserial primary key, 
 	relation_id text references spat.elements(element_id) on delete cascade,
 	role_in_relation text not null, 
-	role_values text[]
+	role_values text[],
+	last_update timestamp without time zone default now()::timestamp without time zone
 );
 
 alter table spat.relation_role owner to upa;

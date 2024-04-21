@@ -1,4 +1,3 @@
-drop view if exists spat.v_active_entites_now;
 drop view if exists spat.v_full_relations;
 drop view if exists spat.v_full_entities;
 drop view if exists spat.v_traitslinks;
