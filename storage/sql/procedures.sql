@@ -231,15 +231,7 @@ begin
 	call spat.UpsertElement(p_id, 1, p_activity, p_traits);
 end; $$;
 
-alter procedure spat.UpsertElement owner to upa;
-
-create or replace procedure spat.UpsertEntity(p_id text, p_activity text, p_traits text[]) language plpgsql as $$
-declare 
-begin 
-	call spat.UpsertElement(p_id, 1, p_activity, p_traits);
-end; $$;
-
-alter procedure spat.UpsertElement owner to upa;
+alter procedure spat.UpsertEntity owner to upa;
 
 create or replace procedure spat.UpsertRelation(p_id text, p_activity text, p_traits text[]) language plpgsql as $$
 declare 
@@ -274,6 +266,68 @@ begin
 end; $$;
 
 alter procedure spat.UpsertRoleInRelation owner to upa;
+
+-- spat.LoadElement returns data to build an element per id
+create or replace function spat.LoadElement(p_id text) 
+returns table(
+	-- element part 
+	element_id text, element_type int, element_traits text[], 
+	period_full bool, period_value text, 
+	-- role and values (null for entity)
+	role_in_relation text, role_values text[],
+	-- entity part (null for relation)
+	attribute_name text, attribute_value text, 
+	attribute_period_full bool, attribute_period_value text
+) language plpgsql as $$
+declare
+	
+begin
+	return query 
+	with 
+	element_data as (
+		select ELT.element_id, ELT.element_type, 
+		PER.period_full, PER.period_value
+		from spat.elements ELT
+		join spat.periods PER on PER.period_id = ELT.element_period
+		where ELT.element_id = p_id
+	),
+	element_traits as (
+		select ELT.element_id, array_agg(TRA.trait) as traits
+		from spat.elements ELT
+		join spat.element_trait ETR on ETR.element_id = ELT.element_id
+		join spat.traits TRA on TRA.trait_id = ETR.trait_id
+		where ELT.element_id = p_id
+		group by ELT.element_id
+	),
+	entity_data as (
+		select ETA.entity_id,
+		ETA.attribute_name, ETA.attribute_value,
+		PER.period_full as attribute_period_full, 
+		PER.period_value as attribute_period_value
+		from spat.entity_attributes ETA 
+		join spat.periods PER on ETA.period_id = PER.period_id
+		where ETA.entity_id = p_id
+	),
+	role_data as (
+		select RRO.relation_id,
+		RRO.role_in_relation, RRO.role_values
+		from spat.relation_role RRO 
+		where RRO.relation_id = p_id 
+	)
+	select 
+	ELD.element_id, ELD.element_type, 
+	ETA.traits as element_traits, 
+	ELD.period_full, ELD.period_value, 
+	RDA.role_in_relation, RDA.role_values,
+	EDA.attribute_name, EDA.attribute_value, 
+	EDA.attribute_period_full, EDA.attribute_period_value
+	from element_data ELD
+	left outer join element_traits ETA on ETA.element_id = ELD.element_id
+	left outer join entity_data EDA on EDA.entity_id = ELD.element_id
+	left outer join role_data RDA on RDA.relation_id = ELD.element_id;
+end; $$;
+
+alter function spat.LoadElement owner to upa;
 
 -- spat.ArePeriodsDisjoin returns true if periods are disjoin. 
 -- Each period is represented as intervals separated by U

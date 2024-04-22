@@ -9,8 +9,8 @@ import (
 	"github.com/zefrenchwan/patterns.git/storage"
 )
 
-// UpsertElementsHandler receives a POST containing a list of dto and inserts them all
-func UpsertElementsHandler(wrapper ServiceParameters, w http.ResponseWriter, r *http.Request) error {
+// upsertElementsHandler receives a POST containing a list of dto and inserts them all
+func upsertElementsHandler(wrapper ServiceParameters, w http.ResponseWriter, r *http.Request) error {
 	defer r.Body.Close()
 
 	payload, errPayload := io.ReadAll(r.Body)

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -33,6 +34,7 @@ func NewDao(ctx context.Context, url string) (Dao, error) {
 	return dao, nil
 }
 
+// UpsertElement upserts an element, no matter an entity or a relation
 func (d *Dao) UpsertElement(ctx context.Context, e patterns.Element) error {
 	if entity, okEntity := e.(patterns.FormalInstance); okEntity {
 		return d.UpsertEntity(ctx, entity)
@@ -128,6 +130,123 @@ func (d *Dao) UpsertRelation(ctx context.Context, r patterns.FormalRelation) err
 		return fmt.Errorf("cannot commit transaction: %s", err.Error())
 	} else {
 		return nil
+	}
+}
+
+// LoadElement by id returns the element with that id, if any
+func (d *Dao) LoadElementById(ctx context.Context, id string) (patterns.Element, error) {
+	if d == nil || d.pool == nil {
+		return nil, errors.New("dao not initialized")
+	}
+
+	query := "select * from spat.loadelement($1)"
+	rows, errRows := d.pool.Query(ctx, query, id)
+	if errRows != nil {
+		return nil, errRows
+	} else {
+		defer rows.Close()
+	}
+
+	// element may be a relation or an entity
+	var relation patterns.Relation
+	var entity patterns.Entity
+	var isRelation bool
+	var globalErr error
+	counter := 0
+	for rows.Next() {
+		// read the raw values because some of them might be null
+		var rawValues []any
+		if raw, err := rows.Values(); err != nil {
+			globalErr = errors.Join(globalErr, err)
+			continue
+		} else {
+			rawValues = raw
+		}
+
+		// read the entier value at the first time, and fill values then
+		if counter == 0 {
+			// init values, read anything to build the data
+			refType := rawValues[1].(int)
+			var traits []string
+			var periodValue string
+			if rawValues[4] != nil {
+				periodValue = rawValues[4].(string)
+			}
+
+			// read the activity, note that period value may be null
+			period, errPeriod := deserializePeriod(rawValues[3].(bool), periodValue)
+			if errPeriod != nil {
+				globalErr = errors.Join(globalErr, errPeriod)
+				continue
+			} else if period.IsEmptyPeriod() {
+				// same period for all values
+				break
+			}
+
+			if rawValues[2] != nil {
+				anyTraits := rawValues[2].([]any)
+				for _, trait := range anyTraits {
+					traits = append(traits, trait.(string))
+				}
+			}
+
+			if isEntityFromRefType(refType) {
+				entity, _ = patterns.NewEntityWithId(id, traits, period)
+			} else {
+				relation = patterns.NewUnlinkedRelationWithId(id, traits)
+				relation.SetActivePeriod(period)
+			}
+		}
+
+		// even if we just built the object, keep going
+		if isRelation {
+			role := rawValues[6].(string)
+			var roleValues []string
+			if rawValues[7] != nil {
+				rawRoles := rawValues[7].([]any)
+				for _, rawRole := range rawRoles {
+					roleValues = append(roleValues, rawRole.(string))
+				}
+			}
+
+			errAdd := relation.SetValuesForRole(role, roleValues)
+			if errAdd != nil {
+				globalErr = errors.Join(globalErr, errAdd)
+			}
+		} else {
+			var periodValue string
+			if rawValues[11] != nil {
+				periodValue = rawValues[11].(string)
+			}
+
+			attributePeriod, errAttributePeriod := deserializePeriod(rawValues[10].(bool), periodValue)
+			if errAttributePeriod != nil {
+				globalErr = errors.Join(globalErr, errAttributePeriod)
+				continue
+			} else if attributePeriod.IsEmptyPeriod() {
+				continue
+			}
+
+			var attributeValue string
+			if rawValues[9] != nil {
+				attributeValue = rawValues[9].(string)
+			}
+
+			entity.AddValue(rawValues[8].(string), attributeValue, attributePeriod)
+		}
+
+		counter++
+	}
+
+	switch {
+	case globalErr != nil:
+		return nil, globalErr
+	case isRelation && counter != 0:
+		return &relation, globalErr
+	case counter != 0:
+		return &entity, globalErr
+	default:
+		return nil, globalErr
 	}
 }
 
@@ -354,4 +473,19 @@ func serializeTimestamp(t time.Time) string {
 // serializeInterval serializes a time interval
 func serializeInterval(i patterns.Interval[time.Time]) string {
 	return i.SerializeInterval(serializeTimestamp)
+}
+
+// deserializePeriod gets the values from the database and returns the matching period
+func deserializePeriod(full bool, value string) (patterns.Period, error) {
+	if full {
+		return patterns.NewFullPeriod(), nil
+	}
+
+	values := strings.Split(value, "U")
+	return patterns.DeserializePeriod(values, DATE_STORAGE_FORMAT)
+}
+
+// isEntityFromRefType returns true if value matches either entity or mixed
+func isEntityFromRefType(value int) bool {
+	return value == 1 || value == 10
 }
