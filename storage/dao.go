@@ -133,7 +133,7 @@ func (d *Dao) UpsertRelation(ctx context.Context, r patterns.FormalRelation) err
 	}
 }
 
-// LoadElement by id returns the element with that id, if any
+// LoadElementById by id returns the element with that id, if any
 func (d *Dao) LoadElementById(ctx context.Context, id string) (patterns.Element, error) {
 	if d == nil || d.pool == nil {
 		return nil, errors.New("dao not initialized")

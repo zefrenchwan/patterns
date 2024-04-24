@@ -770,3 +770,35 @@ group by CNT.trait, CNT.role_in_relation, CNT.active_relation, CNT.role_operands
 end; $$;
 
 alter function spat.ElementRelationsOperandsCountAtMoment owner to upa;
+
+-- spat.ClearAll() deletes all the content 
+create or replace procedure spat.ClearAll() language plpgsql as $$
+declare 
+begin 
+	delete from spat.pattern_links;
+	delete from spat.element_trait;
+	delete from spat.relation_role;
+	delete from spat.entity_attributes;
+	delete from spat.elements;
+	delete from spat.mdlinks;
+	delete from spat.mdroles;
+	delete from spat.traits;
+	delete from spat.reftypes;
+	delete from spat.patterns;
+	delete from spat.periods;
+end; $$;
+
+alter procedure spat.ClearAll() owner to upa;
+
+-- spat.InitSchema cleans the schema and insert base data
+create or replace procedure spat.InitSchema() language plpgsql as $$
+declare 
+begin 
+call spat.ClearAll();
+
+insert into spat.reftypes(reftype_id, reftype_description) values(1,'entity only');
+insert into spat.reftypes(reftype_id, reftype_description) values(2,'relation only');
+insert into spat.reftypes(reftype_id, reftype_description) values(10, 'mixed');
+end; $$;
+
+alter procedure spat.InitSchema() owner to upa;
