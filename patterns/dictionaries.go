@@ -94,21 +94,54 @@ func appendRelationsInformation(values ...*relationsInformation) *relationsInfor
 }
 
 // Dictionary contains all the meta data about relations and traits.
-// There is no name as an attribute of the struct.
-// Reason is that dictionaries are context based, then will be grouped in themes.
 type Dictionary struct {
+	// name of the dictionary, defines its topic.
+	name string
 	// traitsDictionary links a name to the trait information
 	traitsDictionary map[string]*traitsInformation
 	// relationsDictionary links a trait to all its info (parameters traits, subrelation, superrelation)
 	relationsDictionary map[string]*relationsInformation
+	// dependencies of the dictionary, to find source definitions
+	dependencies map[string]*Dictionary
 }
 
 // NewDictionary returns an empty dictionary
-func NewDictionary() Dictionary {
+func NewDictionary(name string) Dictionary {
 	return Dictionary{
+		name:                name,
 		traitsDictionary:    make(map[string]*traitsInformation),
 		relationsDictionary: make(map[string]*relationsInformation),
+		dependencies:        make(map[string]*Dictionary),
 	}
+}
+
+// AddParentName adds a parent, but not its content.
+// If dependency was already set, then, no action
+func (d *Dictionary) AddParentName(name string) error {
+	if d == nil {
+		return errors.New("nil dictionary")
+	} else if d.dependencies == nil {
+		d.dependencies = make(map[string]*Dictionary)
+	}
+
+	if _, found := d.dependencies[name]; !found {
+		d.dependencies[name] = nil
+	}
+
+	return nil
+}
+
+// AddParent adds a parent pattern and force value, no matter what
+func (d *Dictionary) AddParent(name string, parent *Dictionary) error {
+	if d == nil {
+		return errors.New("nil dictionary")
+	} else if d.dependencies == nil {
+		d.dependencies = make(map[string]*Dictionary)
+	}
+
+	d.dependencies[name] = parent
+
+	return nil
 }
 
 // HasRelationTrait returns true if the dictionary has a relation trait named value

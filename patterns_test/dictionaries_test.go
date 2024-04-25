@@ -8,7 +8,7 @@ import (
 )
 
 func TestDictionary(t *testing.T) {
-	dict := patterns.NewDictionary()
+	dict := patterns.NewDictionary("test")
 	dict.AddRelationWithObject("knows", []string{"Person"}, []string{"Place", "Person"})
 
 	// place and persons should be valid traits
@@ -29,8 +29,8 @@ func TestDictionary(t *testing.T) {
 }
 
 func TestDictionaryMerge(t *testing.T) {
-	a := patterns.NewDictionary()
-	b := patterns.NewDictionary()
+	a := patterns.NewDictionary("test")
+	b := patterns.NewDictionary("test")
 
 	a.AddRelationWithObject("couple", []string{"Person"}, []string{"Person"})
 	b.AddRelationWithObject("married", []string{"Person"}, []string{"Person"})

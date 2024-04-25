@@ -8,7 +8,7 @@ import (
 )
 
 func TestInheritanceUsingDictionary(t *testing.T) {
-	d := patterns.NewDictionary()
+	d := patterns.NewDictionary("test")
 	// do it twice to ensure deduplication
 	d.AddTraitsLink("cat", "animal")
 	d.AddTraitsLink("cat", "animal")
@@ -25,7 +25,7 @@ func TestInheritanceUsingDictionary(t *testing.T) {
 }
 
 func TestRelationInheritanceUsingDictionary(t *testing.T) {
-	d := patterns.NewDictionary()
+	d := patterns.NewDictionary("test")
 	d.AddRelationWithObject("couple", []string{"Person"}, []string{"Person"})
 	d.AddRelationWithObject("married", []string{"Person"}, []string{"Person"})
 	d.AddRelationLink("married", "couple")

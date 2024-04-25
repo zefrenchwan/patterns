@@ -1,32 +1,5 @@
 drop view if exists spat.v_full_relations;
 drop view if exists spat.v_full_entities;
-drop view if exists spat.v_traitslinks;
-
-
-create or replace view spat.v_traitslinks as 
-with all_linked_elements as (
-	select TPAT.pattern_name, TPL.reftype, TTSUB.trait as subtrait, 
-	array_agg(TTSUP.trait order by TTSUP.trait)  as supertraits 
-	from spat.patterns TPAT
-	inner join spat.mdlinks TPL on TPL.pattern_id = TPAT.pattern_id 
-	inner join spat.traits TTSUB on TTSUB.trait_id = TPL.subtrait_id
-	inner join spat.traits TTSUP on TTSUP.trait_id = TPL.supertrait_id
-	group by TPAT.pattern_name, TPL.reftype, TTSUB.trait
-), all_unlinked_elements as (
-	select  TPAT.pattern_name, TPL.reftype, TTSUP.trait as supertrait, array[]::text[] 
-	from spat.patterns TPAT
-	inner join spat.mdlinks TPL on TPL.pattern_id = TPAT.pattern_id 
-	inner join spat.traits TTSUP on TTSUP.trait_id = TPL.supertrait_id
-	where not exists (
-		select 1 from spat.mdlinks MDL where MDL.subtrait_id = TTSUP.trait_id
-	)
-)
-select * from all_linked_elements
-UNION 
-select * from all_unlinked_elements;
-
-alter view spat.v_traitslinks owner to upa;
-
 
 -- spat.v_full_entities displays all raw data for a given entity
 create or replace view spat.v_full_entities as 
