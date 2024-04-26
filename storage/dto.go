@@ -44,7 +44,7 @@ type ElementDTO struct {
 	Traits   []string `json:"traits,omitempty"`
 	Activity []string `json:"activity,omitempty"`
 
-	Attributes []EntityValueDTO    `json:"attributess,omitempty"`
+	Attributes []EntityValueDTO    `json:"attributes,omitempty"`
 	Roles      map[string][]string `json:"roles,omitempty"`
 }
 
@@ -52,7 +52,7 @@ type ElementDTO struct {
 type EntityValueDTO struct {
 	AttributeName  string   `json:"attribute"`
 	AttributeValue string   `json:"value"`
-	Periods        []string `json:"vaiidity,omitempty"`
+	Periods        []string `json:"validity,omitempty"`
 }
 
 // IsEntityDTO returns true for an entity

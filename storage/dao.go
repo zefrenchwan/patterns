@@ -166,7 +166,7 @@ func (d *Dao) LoadElementById(ctx context.Context, id string) (patterns.Element,
 		// read the entier value at the first time, and fill values then
 		if counter == 0 {
 			// init values, read anything to build the data
-			refType := rawValues[1].(int)
+			refType := int(rawValues[1].(int32))
 			var traits []string
 			var periodValue string
 			if rawValues[4] != nil {
@@ -215,11 +215,11 @@ func (d *Dao) LoadElementById(ctx context.Context, id string) (patterns.Element,
 			}
 		} else {
 			var periodValue string
-			if rawValues[11] != nil {
-				periodValue = rawValues[11].(string)
+			if rawValues[10] != nil {
+				periodValue = rawValues[10].(string)
 			}
 
-			attributePeriod, errAttributePeriod := deserializePeriod(rawValues[10].(bool), periodValue)
+			attributePeriod, errAttributePeriod := deserializePeriod(rawValues[9].(bool), periodValue)
 			if errAttributePeriod != nil {
 				globalErr = errors.Join(globalErr, errAttributePeriod)
 				continue
@@ -228,11 +228,11 @@ func (d *Dao) LoadElementById(ctx context.Context, id string) (patterns.Element,
 			}
 
 			var attributeValue string
-			if rawValues[9] != nil {
-				attributeValue = rawValues[9].(string)
+			if rawValues[8] != nil {
+				attributeValue = rawValues[8].(string)
 			}
 
-			entity.AddValue(rawValues[8].(string), attributeValue, attributePeriod)
+			entity.AddValue(rawValues[7].(string), attributeValue, attributePeriod)
 		}
 
 		counter++
