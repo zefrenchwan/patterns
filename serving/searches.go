@@ -19,6 +19,11 @@ func searchSynonymsHandler(wrapper ServiceParameters, writer http.ResponseWriter
 		queryValues[k] = v[0]
 	}
 
+	// otherwise, it would load ALL entities
+	if len(queryValues) == 0 {
+		return NewServiceForbiddenError("expecting at least one query element")
+	}
+
 	dtos, errorLoad := wrapper.Dao.LoadEntitiesTraits(wrapper.Ctx, queryValues)
 	if errorLoad != nil {
 		return NewServiceInternalServerError(errorLoad.Error())

@@ -26,6 +26,14 @@ func NewServiceHttpClientError(message string) ServiceHttpError {
 	}
 }
 
+// NewServiceForbiddenError returns a new 403 (forbidden) error
+func NewServiceForbiddenError(message string) ServiceHttpError {
+	return ServiceHttpError{
+		httpCode: http.StatusForbidden,
+		message:  message,
+	}
+}
+
 // NewServiceUnprocessableEntityError returns a 422 error (unprocessable)
 func NewServiceUnprocessableEntityError(message string) ServiceHttpError {
 	return ServiceHttpError{
