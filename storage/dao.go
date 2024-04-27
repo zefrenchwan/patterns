@@ -345,6 +345,8 @@ func (d *Dao) LoadActiveEntitiesAtTime(ctx context.Context, moment time.Time, tr
 	return result, nil
 }
 
+// LoadElementRelationsCountAtMoment returns a table with matching relations stats,
+// formally a table of relation_trait text, relation_role text, active_relation boolean, counter bigint
 func (d *Dao) LoadElementRelationsCountAtMoment(ctx context.Context, id string, moment time.Time) ([]RelationalStatstDTO, error) {
 	if d == nil || d.pool == nil {
 		return nil, errors.New("dao not initialized")
@@ -384,6 +386,8 @@ func (d *Dao) LoadElementRelationsCountAtMoment(ctx context.Context, id string, 
 	return stats, nil
 }
 
+// LoadElementRelationsOperandsCountAtMoment details a relation stats with operands,
+// formally it returns a table of relation_trait text, relation_role text, active_relation boolean, relation_sorted_values text[], counter bigint
 func (d *Dao) LoadElementRelationsOperandsCountAtMoment(ctx context.Context, id string, moment time.Time) ([]RelationalOperandsStatstDTO, error) {
 	if d == nil || d.pool == nil {
 		return nil, errors.New("dao not initialized")
@@ -435,6 +439,62 @@ func (d *Dao) LoadElementRelationsOperandsCountAtMoment(ctx context.Context, id 
 	}
 
 	return stats, nil
+}
+
+// LoadEntitiesTraits returns all entities id, activity and traits matching queryElements.
+// queryElements is a map of attribute name and value
+func (d *Dao) LoadEntitiesTraits(ctx context.Context, queryElements map[string]string) ([]EntityTraitsDTO, error) {
+	if d == nil || d.pool == nil {
+		return nil, errors.New("dao not initialized")
+	}
+
+	query := queryForEntitesTraits(queryElements)
+	rows, errRows := d.pool.Query(ctx, query)
+	if errRows != nil {
+		return nil, errRows
+	} else {
+		defer rows.Close()
+	}
+
+	result := make([]EntityTraitsDTO, 0)
+
+	var globalErr error
+	for rows.Next() {
+		var id string
+		var full bool
+		var period string
+		var traits []string
+
+		rawValues, errValues := rows.Values()
+		if errValues != nil {
+			globalErr = errors.Join(globalErr, errValues)
+			continue
+		}
+
+		id = rawValues[0].(string)
+		full = rawValues[1].(bool)
+		if rawValues[3] != nil {
+			for _, value := range rawValues[3].([]any) {
+				if value != nil {
+					traits = append(traits, value.(string))
+				}
+			}
+		}
+
+		if full {
+			period = "]-oo;+oo["
+		} else if rawValues[2] != nil {
+			period = rawValues[2].(string)
+		}
+
+		result = append(result, EntityTraitsDTO{
+			Id:       id,
+			Activity: period,
+			Traits:   traits,
+		})
+	}
+
+	return result, globalErr
 }
 
 // Close closes the dao and the underlying pool

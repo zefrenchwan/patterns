@@ -12,6 +12,16 @@ const (
 	DATE_SERDE_FORMAT = "2006-01-02T15:04:05"
 )
 
+// EntityTraitsDTO is a dto to deal with just entity ids and related traits
+type EntityTraitsDTO struct {
+	// Id of the entity
+	Id string `json:"id"`
+	// Activity is the activity of the entity
+	Activity string `json:"activity"`
+	// Traits of the matching entity
+	Traits []string `json:"traits"`
+}
+
 // RelationalStatstDTO provides, for an id at a given time, the stats about its relationships
 type RelationalStatstDTO struct {
 	// Trait of the relations
