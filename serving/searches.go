@@ -32,3 +32,17 @@ func searchSynonymsHandler(wrapper ServiceParameters, writer http.ResponseWriter
 	json.NewEncoder(writer).Encode(dtos)
 	return nil
 }
+
+// searchTransitiveEntitiesFromSourceHandler displays entities (and linked relations) around an id
+func searchTransitiveEntitiesFromSourceHandler(wrapper ServiceParameters, writer http.ResponseWriter, request *http.Request) error {
+	defer request.Body.Close()
+
+	id := request.PathValue("id")
+	dtos, errorLoad := wrapper.Dao.LoadTransitiveEntitiesNeighborsById(wrapper.Ctx, id)
+	if errorLoad != nil {
+		return NewServiceInternalServerError(errorLoad.Error())
+	}
+
+	json.NewEncoder(writer).Encode(dtos)
+	return nil
+}

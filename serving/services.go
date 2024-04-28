@@ -33,6 +33,7 @@ func InitService(dao storage.Dao) *http.ServeMux {
 	AddGetServiceHandlerToMux(mux, "/snapshot/neighbors/counters/operands/id/{id}/moment/{moment}", loadRelationsStatsWithOperandsAroundElementAtDateHandler, parameters)
 	// SEARCH PART
 	AddGetServiceHandlerToMux(mux, "/search/traits", searchSynonymsHandler, parameters)
+	AddGetServiceHandlerToMux(mux, "/search/neighbors/id/{id}", searchTransitiveEntitiesFromSourceHandler, parameters)
 	// END OF HANDLERS MODIFICATION
 
 	// mux is complete, all handlers are set

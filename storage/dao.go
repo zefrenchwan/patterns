@@ -250,6 +250,131 @@ func (d *Dao) LoadElementById(ctx context.Context, id string) (patterns.Element,
 	}
 }
 
+// LoadTransitiveEntitiesNeighborsById is a graph function that loads all elements until entities starting current id.
+func (d *Dao) LoadTransitiveEntitiesNeighborsById(ctx context.Context, id string) ([]ElementDTO, error) {
+	if d == nil || d.pool == nil {
+		return nil, errors.New("dao not initialized")
+	}
+
+	query := "select * from spat.NeighborsUntilEntities($1)"
+	rows, errRows := d.pool.Query(ctx, query, id)
+	if errRows != nil {
+		return nil, errRows
+	} else {
+		defer rows.Close()
+	}
+
+	linkedValues := make(map[string]ElementDTO)
+
+	var globalErr error
+	for rows.Next() {
+		// id of the element
+		var id string
+		// rawValues from database
+		var rawValues []any
+		if raw, err := rows.Values(); err != nil {
+			globalErr = errors.Join(globalErr, err)
+			continue
+		} else {
+			rawValues = raw
+			id = rawValues[0].(string)
+		}
+
+		var previousElement ElementDTO
+		if v, found := linkedValues[id]; !found {
+			// build activity and traits, then insert elements
+			var traits []string
+			full := rawValues[3].(bool)
+			period := []string{}
+			if full {
+				period = []string{"]-oo;+oo["}
+			} else if rawValues[4] != nil {
+				period = strings.Split(rawValues[4].(string), "U")
+			}
+
+			if rawValues[2] != nil {
+				traitValues := rawValues[2].([]any)
+				for _, trait := range traitValues {
+					if trait == nil {
+						continue
+					}
+
+					traits = append(traits, trait.(string))
+				}
+			}
+
+			previousElement = ElementDTO{
+				Id:       id,
+				Activity: period,
+				Traits:   traits,
+			}
+		} else {
+			previousElement = v
+		}
+
+		// insert then values or roles
+
+		// role name and values set in columns 5 and 6
+		if rawValues[5] != nil {
+			role := rawValues[5].(string)
+			var operands []string
+			if rawValues[6] != nil {
+				for _, value := range rawValues[6].([]any) {
+					if value == nil {
+						continue
+					}
+
+					operands = append(operands, value.(string))
+				}
+			}
+
+			if len(previousElement.Roles) == 0 {
+				previousElement.Roles = make(map[string][]string)
+			}
+
+			previousElement.Roles[role] = operands
+		}
+
+		if rawValues[7] != nil {
+			name := rawValues[7].(string)
+			var value string
+			if rawValues[8] != nil {
+				value = rawValues[8].(string)
+			}
+
+			var periods []string = []string{"]-oo;+oo["}
+			if !rawValues[9].(bool) {
+				periods = strings.Split(rawValues[10].(string), "U")
+			}
+
+			attr := EntityValueDTO{
+				AttributeName:  name,
+				AttributeValue: value,
+				Periods:        periods,
+			}
+
+			previousElement.Attributes = append(previousElement.Attributes, attr)
+		}
+
+		// don't forget to add the update
+		linkedValues[id] = previousElement
+	}
+
+	if globalErr != nil {
+		return nil, globalErr
+	}
+
+	result := make([]ElementDTO, len(linkedValues))
+	index := 0
+
+	for _, value := range linkedValues {
+		result[index] = value
+		index++
+	}
+
+	return result, nil
+}
+
 // LoadActiveEntitiesAtTime returns active entity values at a given time
 func (d *Dao) LoadActiveEntitiesAtTime(ctx context.Context, moment time.Time, trait string, valuesQuery map[string]string) ([]ElementDTO, error) {
 	if d == nil || d.pool == nil {
