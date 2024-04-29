@@ -1,3 +1,8 @@
+---------------------------------------------
+-- TO PASS AFTER procedures and structures --
+---------------------------------------------
+
+
 -- spat.NeighborsUntilEntities loads elements from an id:
 -- only relations from the element
 -- only elements in relations with the element
