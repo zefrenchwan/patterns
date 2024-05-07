@@ -3,6 +3,8 @@ package nodes_test
 import (
 	"slices"
 	"testing"
+
+	"github.com/zefrenchwan/patterns.git/nodes"
 )
 
 func TestIntervalsCompare(t *testing.T) {

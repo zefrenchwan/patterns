@@ -5,6 +5,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/zefrenchwan/patterns.git/nodes"
 )
 
 func TestPeriodAddRemoveIntervals(t *testing.T) {

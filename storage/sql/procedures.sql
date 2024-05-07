@@ -2,33 +2,33 @@
 -- STARTING ENTITIES RELATIONS CODE --
 --------------------------------------
 
--- spat.UpsertElement upserts an element (relation and entity): id, activity and traits.
+-- sgraphs.UpsertElement upserts an element (relation and entity): id, activity and traits.
 -- If traits do not exist, they are inserted as entity traits.  
-create or replace procedure spat.UpsertElement(p_id text, p_type int, p_activity text, p_traits text[]) language plpgsql as $$
+create or replace procedure sgraphs.UpsertElement(p_id text, p_type int, p_activity text, p_traits text[]) language plpgsql as $$
 declare 
 	l_trait text;
 	l_traitid bigint;
 	l_period bigint;
 	l_previousperiod bigint;
 begin
-	if not exists (select 1 from spat.reftypes where reftype_id = p_type) then 
+	if not exists (select 1 from sgraphs.reftypes where reftype_id = p_type) then 
 		raise exception 'invalid p_type';
 	end if;
 
-	if not exists (select 1 from spat.elements where element_id = p_id) then 
-		call spat.setperiod(p_activity, l_period);
-		insert into spat.elements(element_id, element_type, element_period) 
+	if not exists (select 1 from sgraphs.elements where element_id = p_id) then 
+		call sgraphs.setperiod(p_activity, l_period);
+		insert into sgraphs.elements(element_id, element_type, element_period) 
 		values (p_id, p_type, l_period);
 	else		
 		select element_period into l_previousperiod
-		from spat.elements where element_id = p_id;
+		from sgraphs.elements where element_id = p_id;
 
-		call spat.setperiod(p_activity, l_period);
-		update spat.elements set element_period = l_period;
-		delete from spat.periods where period_id = l_previousperiod;
+		call sgraphs.setperiod(p_activity, l_period);
+		update sgraphs.elements set element_period = l_period;
+		delete from sgraphs.periods where period_id = l_previousperiod;
 	end if;
 	
-	delete from spat.element_trait where element_id = p_id;
+	delete from sgraphs.element_trait where element_id = p_id;
 
 	if p_traits is null or array_length(p_traits, 1) = 0 then 
 		return;
@@ -36,63 +36,63 @@ begin
 	
 	foreach l_trait slice 0 in array p_traits loop 
 		select trait_id into l_traitid
-		from spat.traits 
+		from sgraphs.traits 
 		where trait = l_trait and trait_type in (p_type,10);
 	
 		if l_traitid is null then 
-			insert into spat.traits(trait_type, trait) values (1, l_trait) returning trait_id into l_traitid;
+			insert into sgraphs.traits(trait_type, trait) values (1, l_trait) returning trait_id into l_traitid;
 		end if;
 		
-		insert into spat.element_trait(element_id, trait_id) values (p_id, l_traitid);
+		insert into sgraphs.element_trait(element_id, trait_id) values (p_id, l_traitid);
 	end loop;
 end $$;
 
-alter procedure spat.UpsertElement owner to upa;
+alter procedure sgraphs.UpsertElement owner to upa;
 
-create or replace procedure spat.UpsertEntity(p_id text, p_activity text, p_traits text[]) language plpgsql as $$
+create or replace procedure sgraphs.UpsertEntity(p_id text, p_activity text, p_traits text[]) language plpgsql as $$
 declare 
 begin 
-	call spat.UpsertElement(p_id, 1, p_activity, p_traits);
+	call sgraphs.UpsertElement(p_id, 1, p_activity, p_traits);
 end; $$;
 
-alter procedure spat.UpsertEntity owner to upa;
+alter procedure sgraphs.UpsertEntity owner to upa;
 
-create or replace procedure spat.UpsertRelation(p_id text, p_activity text, p_traits text[]) language plpgsql as $$
+create or replace procedure sgraphs.UpsertRelation(p_id text, p_activity text, p_traits text[]) language plpgsql as $$
 declare 
 begin 
-	call spat.UpsertElement(p_id, 2, p_activity, p_traits);
+	call sgraphs.UpsertElement(p_id, 2, p_activity, p_traits);
 end; $$;
 
-alter procedure spat.UpsertRelation owner to upa;
+alter procedure sgraphs.UpsertRelation owner to upa;
 
--- spat.ClearRolesForRelation clears roles for relation
-create or replace procedure spat.ClearRolesForRelation(p_id text) language plpgsql as $$
+-- sgraphs.ClearRolesForRelation clears roles for relation
+create or replace procedure sgraphs.ClearRolesForRelation(p_id text) language plpgsql as $$
 declare 
 begin
-	delete from spat.relation_role where relation_id = p_id;
+	delete from sgraphs.relation_role where relation_id = p_id;
 end $$;
 
-alter procedure spat.ClearRolesForRelation owner to upa;
+alter procedure sgraphs.ClearRolesForRelation owner to upa;
 
--- spat.UpsertRoleInRelation upserts role for an existing relation
-create or replace procedure spat.UpsertRoleInRelation(
+-- sgraphs.UpsertRoleInRelation upserts role for an existing relation
+create or replace procedure sgraphs.UpsertRoleInRelation(
 	p_id text, p_role text, p_values text[]
 ) language plpgsql as $$
 declare 
 begin 
 
-	if not exists (select 1 from spat.elements where element_id = p_id) then 
+	if not exists (select 1 from sgraphs.elements where element_id = p_id) then 
 		raise exception 'relation does not exist (cannot create due to missing period)';
 	end if;
 	
-	delete from spat.relation_role where relation_id = p_id and role_in_relation = p_role;
-	insert into spat.relation_role(relation_id, role_in_relation, role_values) values (p_id, p_role, p_values);
+	delete from sgraphs.relation_role where relation_id = p_id and role_in_relation = p_role;
+	insert into sgraphs.relation_role(relation_id, role_in_relation, role_values) values (p_id, p_role, p_values);
 end; $$;
 
-alter procedure spat.UpsertRoleInRelation owner to upa;
+alter procedure sgraphs.UpsertRoleInRelation owner to upa;
 
--- spat.LoadElement returns data to build an element per id
-create or replace function spat.LoadElement(p_id text) 
+-- sgraphs.LoadElement returns data to build an element per id
+create or replace function sgraphs.LoadElement(p_id text) 
 returns table(
 	-- element part 
 	element_id text, element_type int, element_traits text[], 
@@ -111,15 +111,15 @@ begin
 	element_data as (
 		select ELT.element_id, ELT.element_type, 
 		PER.period_full, PER.period_value
-		from spat.elements ELT
-		join spat.periods PER on PER.period_id = ELT.element_period
+		from sgraphs.elements ELT
+		join sgraphs.periods PER on PER.period_id = ELT.element_period
 		where ELT.element_id = p_id
 	),
 	element_traits as (
 		select ELT.element_id, array_agg(TRA.trait) as traits
-		from spat.elements ELT
-		join spat.element_trait ETR on ETR.element_id = ELT.element_id
-		join spat.traits TRA on TRA.trait_id = ETR.trait_id
+		from sgraphs.elements ELT
+		join sgraphs.element_trait ETR on ETR.element_id = ELT.element_id
+		join sgraphs.traits TRA on TRA.trait_id = ETR.trait_id
 		where ELT.element_id = p_id
 		group by ELT.element_id
 	),
@@ -128,14 +128,14 @@ begin
 		ETA.attribute_name, ETA.attribute_value,
 		PER.period_full as attribute_period_full, 
 		PER.period_value as attribute_period_value
-		from spat.entity_attributes ETA 
-		join spat.periods PER on ETA.period_id = PER.period_id
+		from sgraphs.entity_attributes ETA 
+		join sgraphs.periods PER on ETA.period_id = PER.period_id
 		where ETA.entity_id = p_id
 	),
 	role_data as (
 		select RRO.relation_id,
 		RRO.role_in_relation, RRO.role_values
-		from spat.relation_role RRO 
+		from sgraphs.relation_role RRO 
 		where RRO.relation_id = p_id 
 	)
 	select 
@@ -151,14 +151,14 @@ begin
 	left outer join role_data RDA on RDA.relation_id = ELD.element_id;
 end; $$;
 
-alter function spat.LoadElement owner to upa;
+alter function sgraphs.LoadElement owner to upa;
 
--- spat.ArePeriodsDisjoin returns true if periods are disjoin. 
+-- sgraphs.ArePeriodsDisjoin returns true if periods are disjoin. 
 -- Each period is represented as intervals separated by U
 -- Each interval is represented as:
 -- * border is either [ or ]
 -- * value is either a YYYY-MM-DD HH24:MI:ss or -oo or +oo
-create or replace function spat.ArePeriodsDisjoin(p_a text, p_b text) returns bool 
+create or replace function sgraphs.ArePeriodsDisjoin(p_a text, p_b text) returns bool 
 language plpgsql as $$
 declare 
 	l_periods_a text[] := string_to_array(p_a,'U');
@@ -287,10 +287,10 @@ begin
 	return true;
 end $$;
 
-alter function spat.ArePeriodsDisjoin owner to upa;
+alter function sgraphs.ArePeriodsDisjoin owner to upa;
 
--- spat.SetPeriod sets a period and returns its id via out variable
-create or replace procedure spat.SetPeriod(p_period text, p_newid out bigint)
+-- sgraphs.SetPeriod sets a period and returns its id via out variable
+create or replace procedure sgraphs.SetPeriod(p_period text, p_newid out bigint)
 language plpgsql as $$
 declare 
 	l_periods text[] := string_to_array(p_period,'U');
@@ -306,12 +306,12 @@ declare
 	l_counter int;
 begin
 	if p_period = '];[' or upper(p_period) = 'EMPTY' then 
-		insert into spat.periods(period_empty, period_full, period_min, period_max, period_value) 
+		insert into sgraphs.periods(period_empty, period_full, period_min, period_max, period_value) 
 		values(true, false, null, null,null)
 		returning period_id into l_resid;
 		p_newid = l_resid;
 	elsif p_period = ']-oo;+oo[' then 
-		insert into spat.periods(period_empty, period_full, period_min, period_max, period_value) 
+		insert into sgraphs.periods(period_empty, period_full, period_min, period_max, period_value) 
 		values(false, true, null, null,null)
 		returning period_id into l_resid;
 		p_newid = l_resid;
@@ -356,17 +356,17 @@ begin
 			l_counter = l_counter + 1;
 		end loop;
 		-- insert period 
-		insert into spat.periods(period_empty, period_full, period_min, period_max, period_value) 
+		insert into sgraphs.periods(period_empty, period_full, period_min, period_max, period_value) 
 		values(false, false, l_globalmin, l_globalmax, p_period)
 		returning period_id into l_resid;
 		p_newid = l_resid;
 	end if;
 end $$;
 
-alter procedure spat.SetPeriod owner to upa;
+alter procedure sgraphs.SetPeriod owner to upa;
 
--- spat.AddAttributeValuesInEntity adds attribute values to an exising entity
-create or replace procedure spat.AddAttributeValuesInEntity(
+-- sgraphs.AddAttributeValuesInEntity adds attribute values to an exising entity
+create or replace procedure sgraphs.AddAttributeValuesInEntity(
 	p_id text, p_attribute text, p_values text[], p_periods text[]
 ) language plpgsql as $$
 declare 
@@ -376,7 +376,7 @@ declare
 	l_periodid bigint;
 begin 
 	if not exists (
-		select 1 from spat.elements 
+		select 1 from sgraphs.elements 
 		where element_id = p_id and element_type in (1,10)
 	) then 
 		raise exception 'entity with id % does not exist', p_id;
@@ -386,29 +386,29 @@ begin
 		raise exception 'size of parameters do not match';
 	end if; 
 
-	delete from spat.periods where period_id in (
+	delete from sgraphs.periods where period_id in (
 		select period_id
-		from spat.entity_attributes
+		from sgraphs.entity_attributes
 		where entity_id = p_id and attribute_name = p_attribute
 	);
 	
-	delete from spat.entity_attributes
+	delete from sgraphs.entity_attributes
 	where entity_id = p_id and attribute_name = p_attribute; 
 	
 	for i in 1 .. array_length(p_values,1) loop 
 		l_value = p_values[i];
 		l_period = p_periods[i];
 		
-		call spat.SetPeriod(l_period, l_periodid);
-		insert into spat.entity_attributes(entity_id,attribute_name, attribute_value,period_id)
+		call sgraphs.SetPeriod(l_period, l_periodid);
+		insert into sgraphs.entity_attributes(entity_id,attribute_name, attribute_value,period_id)
 		values(p_id, p_attribute, l_value, l_periodid);	
 	end loop;
 end $$;
 
-alter procedure spat.AddAttributeValuesInEntity owner to upa;
+alter procedure sgraphs.AddAttributeValuesInEntity owner to upa;
 
--- spat.IsPeriodActiveAtTimestamp returns true if period contains the moment
-create or replace function spat.IsPeriodActiveAtTimestamp(
+-- sgraphs.IsPeriodActiveAtTimestamp returns true if period contains the moment
+create or replace function sgraphs.IsPeriodActiveAtTimestamp(
 	p_period_empty bool, 
 	p_period_full bool,
 	p_period text, 
@@ -471,10 +471,10 @@ begin
 	return false;
 end; $$; 
 
-alter function spat.IsPeriodActiveAtTimestamp owner to upa;
+alter function sgraphs.IsPeriodActiveAtTimestamp owner to upa;
 
--- spat.ActiveEntitiesValuesAt returns all active values at a given time
-create or replace function spat.ActiveEntitiesValuesAt(
+-- sgraphs.ActiveEntitiesValuesAt returns all active values at a given time
+create or replace function sgraphs.ActiveEntitiesValuesAt(
 	p_moment timestamp without time zone
 ) returns table (entity_id text, attribute_name text, attribute_value text, traits text[]) 
 language plpgsql as $$
@@ -483,22 +483,22 @@ return query
 	with 
 	active_entities as (
 		select ENT.element_id as entity_id
-		from spat.elements ENT 
-		join spat.periods PER on PER.period_id = ENT.element_period
+		from sgraphs.elements ENT 
+		join sgraphs.periods PER on PER.period_id = ENT.element_period
 		where ENT.element_type in (1,10)
-		and spat.isperiodactiveattimestamp(PER.period_empty, PER.period_full, PER.period_value, p_moment)
+		and sgraphs.isperiodactiveattimestamp(PER.period_empty, PER.period_full, PER.period_value, p_moment)
 	), active_entities_traits as (
 		select ENT.entity_id, array_agg(TRA.trait) as traits
 		from active_entities ENT 
-		join spat.element_trait ETA on ETA.element_id = ENT.entity_id
-		join spat.traits TRA on TRA.trait_id = ETA.trait_id
+		join sgraphs.element_trait ETA on ETA.element_id = ENT.entity_id
+		join sgraphs.traits TRA on TRA.trait_id = ETA.trait_id
 		group by ENT.entity_id
 	), active_attributes as (
 		select ENT.entity_id, EAT.attribute_name, EAT.attribute_value
 		from active_entities ENT 
-		join spat.entity_attributes EAT on EAT.entity_id = ENT.entity_id
-		join spat.periods EPER on EPER.period_id = EAT.period_id 
-		where spat.isperiodactiveattimestamp(EPER.period_empty, EPER.period_full, EPER.period_value, p_moment)
+		join sgraphs.entity_attributes EAT on EAT.entity_id = ENT.entity_id
+		join sgraphs.periods EPER on EPER.period_id = EAT.period_id 
+		where sgraphs.isperiodactiveattimestamp(EPER.period_empty, EPER.period_full, EPER.period_value, p_moment)
 	)
 	select ENT.entity_id, AAT.attribute_name, AAT.attribute_value, AET.traits
 	from active_entities ENT
@@ -507,13 +507,13 @@ return query
 ;
 end; $$; 
 
-alter function spat.ActiveEntitiesValuesAt owner to upa;
+alter function sgraphs.ActiveEntitiesValuesAt owner to upa;
 
--- spat.ElementRelationsCountAtMoment returns the number of matches per trait, role and active status of an element id at a given time. 
+-- sgraphs.ElementRelationsCountAtMoment returns the number of matches per trait, role and active status of an element id at a given time. 
 -- For instance, let X be a person with N followers (A active, B inactive), result would be 
 -- follower | subject | true  | A 
 -- follower | subject | false | B
-create or replace function spat.ElementRelationsCountAtMoment(
+create or replace function sgraphs.ElementRelationsCountAtMoment(
 	p_id text, p_moment timestamp without time zone 
 ) returns table(relation_trait text, relation_role text, active_relation bool, counter bigint)
 language plpgsql as $$
@@ -523,11 +523,11 @@ with
 current_neighborhoods as (
 	select distinct 
 	ELT.element_id as relation_id, 
-	spat.isperiodactiveattimestamp(PER.period_empty, PER.period_full, period_value, p_moment) as active_relation,
+	sgraphs.isperiodactiveattimestamp(PER.period_empty, PER.period_full, period_value, p_moment) as active_relation,
 	RRO.role_in_relation
-	from spat.elements ELT
-	join spat.periods PER on PER.period_id = ELT.element_period
-	join spat.relation_role RRO on ELT.element_id = RRO.relation_id
+	from sgraphs.elements ELT
+	join sgraphs.periods PER on PER.period_id = ELT.element_period
+	join sgraphs.relation_role RRO on ELT.element_id = RRO.relation_id
 	where not PER.period_empty 
 	and p_id = ANY (RRO.role_values)
 ),
@@ -535,8 +535,8 @@ current_neighborhoods_traits as (
 	select distinct 
 	relation_id, TRA.trait, CUR.role_in_relation, CUR.active_relation
 	from current_neighborhoods CUR
-	left outer join spat.element_trait ETA on CUR.relation_id = ETA.element_id
-	left outer join spat.traits TRA on TRA.trait_id = ETA.trait_id
+	left outer join sgraphs.element_trait ETA on CUR.relation_id = ETA.element_id
+	left outer join sgraphs.traits TRA on TRA.trait_id = ETA.trait_id
 )
 select 
 CNT.trait as relation_trait, 
@@ -547,12 +547,12 @@ from current_neighborhoods_traits CNT
 group by CNT.trait, CNT.role_in_relation, CNT.active_relation;
 end; $$;
 
-alter function spat.ElementRelationsCountAtMoment owner to upa;
+alter function sgraphs.ElementRelationsCountAtMoment owner to upa;
 
--- spat.ElementRelationsOperandsCountAtMoment details, for each relation with this id as a parameter, 
+-- sgraphs.ElementRelationsOperandsCountAtMoment details, for each relation with this id as a parameter, 
 -- the traits, roles, activity and values (sorted to avoid permutations explosion) at a given time. 
--- It is basically  spat.ElementRelationsCountAtMoment with sorted operands. 
-create or replace function spat.ElementRelationsOperandsCountAtMoment(
+-- It is basically  sgraphs.ElementRelationsCountAtMoment with sorted operands. 
+create or replace function sgraphs.ElementRelationsOperandsCountAtMoment(
 	p_id text, p_moment timestamp without time zone 
 ) returns table(relation_trait text, relation_role text, active_relation bool, relation_sorted_values text[], counter bigint)
 language plpgsql as $$
@@ -562,12 +562,12 @@ with
 current_neighborhoods as (
 	select 
 	ELT.element_id as relation_id, 
-	spat.isperiodactiveattimestamp(PER.period_empty, PER.period_full, period_value, p_moment) as active_relation,
+	sgraphs.isperiodactiveattimestamp(PER.period_empty, PER.period_full, period_value, p_moment) as active_relation,
 	RRO.role_in_relation, 
 	unnest(RRO.role_values) as role_operand
-	from spat.elements ELT
-	join spat.periods PER on PER.period_id = ELT.element_period
-	join spat.relation_role RRO on ELT.element_id = RRO.relation_id
+	from sgraphs.elements ELT
+	join sgraphs.periods PER on PER.period_id = ELT.element_period
+	join sgraphs.relation_role RRO on ELT.element_id = RRO.relation_id
 	where not PER.period_empty 
 	and p_id = ANY (RRO.role_values)
 ),
@@ -580,8 +580,8 @@ current_aggregated_neighbors as (
 current_neighborhoods_traits as (
 	select relation_id, TRA.trait, CUR.role_in_relation, CUR.active_relation, role_operands
 	from current_aggregated_neighbors CUR
-	left outer join spat.element_trait ETA on CUR.relation_id = ETA.element_id
-	left outer join spat.traits TRA on TRA.trait_id = ETA.trait_id
+	left outer join sgraphs.element_trait ETA on CUR.relation_id = ETA.element_id
+	left outer join sgraphs.traits TRA on TRA.trait_id = ETA.trait_id
 )
 select 
 CNT.trait as relation_trait, 
@@ -593,36 +593,32 @@ from current_neighborhoods_traits CNT
 group by CNT.trait, CNT.role_in_relation, CNT.active_relation, CNT.role_operands;
 end; $$;
 
-alter function spat.ElementRelationsOperandsCountAtMoment owner to upa;
+alter function sgraphs.ElementRelationsOperandsCountAtMoment owner to upa;
 
--- spat.ClearAll() deletes all the content 
-create or replace procedure spat.ClearAll() language plpgsql as $$
+-- sgraphs.ClearAll() deletes all the content 
+create or replace procedure sgraphs.ClearAll() language plpgsql as $$
 declare 
 begin 
-	delete from spat.dictionary_links;
-	delete from spat.element_trait;
-	delete from spat.relation_role;
-	delete from spat.entity_attributes;
-	delete from spat.elements;
-	delete from spat.mdlinks;
-	delete from spat.mdroles;
-	delete from spat.traits;
-	delete from spat.reftypes;
-	delete from spat.dictionaries;
-	delete from spat.periods;
+	delete from sgraphs.element_trait;
+	delete from sgraphs.relation_role;
+	delete from sgraphs.entity_attributes;
+	delete from sgraphs.elements;
+	delete from sgraphs.traits;
+	delete from sgraphs.reftypes;
+	delete from sgraphs.periods;
 end; $$;
 
-alter procedure spat.ClearAll() owner to upa;
+alter procedure sgraphs.ClearAll() owner to upa;
 
--- spat.InitSchema cleans the schema and insert base data
-create or replace procedure spat.InitSchema() language plpgsql as $$
+-- sgraphs.InitSchema cleans the schema and insert base data
+create or replace procedure sgraphs.InitSchema() language plpgsql as $$
 declare 
 begin 
-call spat.ClearAll();
+call sgraphs.ClearAll();
 
-insert into spat.reftypes(reftype_id, reftype_description) values(1,'entity only');
-insert into spat.reftypes(reftype_id, reftype_description) values(2,'relation only');
-insert into spat.reftypes(reftype_id, reftype_description) values(10, 'mixed');
+insert into sgraphs.reftypes(reftype_id, reftype_description) values(1,'entity only');
+insert into sgraphs.reftypes(reftype_id, reftype_description) values(2,'relation only');
+insert into sgraphs.reftypes(reftype_id, reftype_description) values(10, 'mixed');
 end; $$;
 
-alter procedure spat.InitSchema() owner to upa;
+alter procedure sgraphs.InitSchema() owner to upa;

@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/zefrenchwan/nodes.git/nodes"
+	"github.com/zefrenchwan/patterns.git/nodes"
 )
 
 func TestEntityFullActive(t *testing.T) {

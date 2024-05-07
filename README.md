@@ -39,14 +39,7 @@ For a relation:
 
 Metadata is represented as **traits** to define types of elements. 
 A relation has traits too. 
-
-
 A trait is not a simple label to put on elements. 
-Traits are grouped into **inheritance graphs**. 
-For instance, "City" is a "Location". 
-Flagging Paris as a City should create a trait "Location" for Paris too.
-For instance, "Couple" for a relation is a special case for "Knows". 
-So, if you flag a relation with "Couple", it is expected to be aware it also is "Knows". 
 
 
 
@@ -64,6 +57,6 @@ Linked project [bootstrapper](https://github.com/zefrenchwan/bootstrapper) allow
 Its storage is currently a relational database (postgresql indeed). 
 
 The project contains:
-* **patterns** that defines the data model
+* **nodes** that defines the data model based on nodes in graphs
 * **storage** that contains the storage system
 * **serving** that contains the webapp part

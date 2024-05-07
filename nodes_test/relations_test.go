@@ -3,6 +3,8 @@ package nodes_test
 import (
 	"testing"
 	"time"
+
+	"github.com/zefrenchwan/patterns.git/nodes"
 )
 
 func TestTimeDependentRelation(t *testing.T) {

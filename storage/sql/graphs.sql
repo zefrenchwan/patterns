@@ -3,13 +3,13 @@
 ---------------------------------------------
 
 
--- spat.NeighborsUntilEntities loads elements from an id:
+-- sgraphs.NeighborsUntilEntities loads elements from an id:
 -- only relations from the element
 -- only elements in relations with the element
 -- or recursively relations over relations raised by previous parts
 -- 
 -- From a technical point of view, it is a graph walkthrough 
-create or replace function spat.NeighborsUntilEntities(p_id text) 
+create or replace function sgraphs.NeighborsUntilEntities(p_id text) 
 returns table(
     element_id text, element_type integer, element_traits text[], 
     period_full boolean, period_value text, 
@@ -61,14 +61,14 @@ create temporary table if not exists temp_neighbors
 -- and let the process deal with it if it is a relation
 if exists (
     -- p_id matches a relation
-    select 1 from spat.elements ELT 
+    select 1 from sgraphs.elements ELT 
     where ELT.element_id = p_id
     and ELT.element_type in (1,10)
 ) then 
     -- by definition, did not exist before
     insert into temp_neighbors 
     select l_walkthrough_id as walkthrough_id, NUE.*
-    from spat.LoadElement(p_id) NUE ;
+    from sgraphs.LoadElement(p_id) NUE ;
 else 
     -- it is a relation, then, so add it to process
     insert into temp_walkthroughs(walkthrough_id, relation_id)
@@ -77,7 +77,7 @@ end if;
 -- add all relations that contain it, no matter parameter type
 with parents_relations as (
 	select RRO.relation_id
-	from spat.relation_role RRO
+	from sgraphs.relation_role RRO
 	where p_id = ANY(RRO.role_values)
 )
 insert into temp_walkthroughs(walkthrough_id, relation_id)
@@ -123,19 +123,19 @@ LOOP
     ) then 
         insert into temp_neighbors 
         select l_walkthrough_id as walkthrough_id, NUE.*
-        from spat.LoadElement(l_current_relation) NUE ;
+        from sgraphs.LoadElement(l_current_relation) NUE ;
     end if ;
 
     -- save childs of the relation to ease processing
     with relation_childs as (
         select RRO.relation_id, unnest(RRO.role_values) as role_value
-        from spat.relation_role RRO
+        from sgraphs.relation_role RRO
         where relation_id = l_current_relation
     ), relation_typed_childs as (
         -- add type to previous results
         select RCH.relation_id, RCH.role_value, ELT.element_type
         from relation_childs RCH 
-        join spat.elements ELT on ELT.element_id = RCH.role_value
+        join sgraphs.elements ELT on ELT.element_id = RCH.role_value
     ), new_elements_to_process as (
         select RTC.relation_id, RTC.role_value, RTC.element_type
         from relation_typed_childs RTC
@@ -156,22 +156,22 @@ LOOP
         -- find entity id, exact type and period
         select ELT.element_id, ELT.element_type, PER.period_full, PER.period_value
         from temp_relation_childs TRC
-        join spat.elements ELT on ELT.element_id = TRC.role_value
-        join spat.periods PER on PER.period_id = ELT.element_period
+        join sgraphs.elements ELT on ELT.element_id = TRC.role_value
+        join sgraphs.periods PER on PER.period_id = ELT.element_period
         where TRC.element_type in (1,10)
     ), entity_traits as (
         select ACT.element_id, array_agg(TRA.trait) as traits
         from entity_activity ACT
-        join spat.element_trait ETR on ETR.element_id = ACT.element_id 
-        join spat.traits TRA on TRA.trait_id = ETR.trait_id
+        join sgraphs.element_trait ETR on ETR.element_id = ACT.element_id 
+        join sgraphs.traits TRA on TRA.trait_id = ETR.trait_id
         group by ACT.element_id
     ), entity_attributes as (
         select ACT.element_id, 
         ATR.attribute_name, ATR.attribute_value, 
         PER.period_full, PER.period_value
         from entity_activity ACT
-        join spat.entity_attributes ATR on ATR.entity_id = ACT.element_id 
-        join spat.periods PER on PER.period_id = ATR.period_id
+        join sgraphs.entity_attributes ATR on ATR.entity_id = ACT.element_id 
+        join sgraphs.periods PER on PER.period_id = ATR.period_id
     )
     insert into temp_neighbors(
         walkthrough_id, element_id, element_type, element_traits, 
@@ -198,7 +198,7 @@ LOOP
         and walkthrough_id = l_walkthrough_id
     ), parent_relations as ( 
         select RRO.relation_id 
-        from spat.relation_role RRO
+        from sgraphs.relation_role RRO
         where l_current_relation = ANY (RRO.role_values)
     ), all_neighbors_relations as (
         select CRE.relation_id 

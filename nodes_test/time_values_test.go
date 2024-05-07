@@ -4,6 +4,8 @@ import (
 	"slices"
 	"testing"
 	"time"
+
+	"github.com/zefrenchwan/patterns.git/nodes"
 )
 
 func TestTimeValuesSetAttribute(t *testing.T) {

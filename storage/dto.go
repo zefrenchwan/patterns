@@ -3,6 +3,8 @@ package storage
 import (
 	"errors"
 	"slices"
+
+	"github.com/zefrenchwan/patterns.git/nodes"
 )
 
 const (
@@ -69,28 +71,28 @@ func (e ElementDTO) IsEntityDTO() bool {
 }
 
 // SerializePeriodsForDTO returns the serialized period as a slice, one value per interval
-func SerializePeriodsForDTO(p patterns.Period) []string {
-	return patterns.SerializePeriod(p, DATE_SERDE_FORMAT)
+func SerializePeriodsForDTO(p nodes.Period) []string {
+	return nodes.SerializePeriod(p, DATE_SERDE_FORMAT)
 }
 
 // DeserializePeriodForDTO uses DTO date format to deserialize a slice of strings representing a period
-func DeserializePeriodForDTO(intervals []string) (patterns.Period, error) {
-	return patterns.DeserializePeriod(intervals, DATE_SERDE_FORMAT)
+func DeserializePeriodForDTO(intervals []string) (nodes.Period, error) {
+	return nodes.DeserializePeriod(intervals, DATE_SERDE_FORMAT)
 }
 
 // SerializeElement returns the dto content
-func SerializeElement(e patterns.Element) ElementDTO {
+func SerializeElement(e nodes.Element) ElementDTO {
 	var dto ElementDTO
 	dto.Id = e.Id()
 	dto.Traits = append(dto.Traits, e.Traits()...)
 	dto.Activity = SerializePeriodsForDTO(e.ActivePeriod())
 
-	if relation, ok := e.(patterns.FormalRelation); ok {
+	if relation, ok := e.(nodes.FormalRelation); ok {
 		dto.Roles = make(map[string][]string)
 		for role, values := range relation.GetValuesPerRole() {
 			dto.Roles[role] = slices.Clone(values)
 		}
-	} else if entity, ok := e.(*patterns.Entity); ok {
+	} else if entity, ok := e.(*nodes.Entity); ok {
 		for _, attr := range entity.Attributes() {
 			attributeValues, _ := entity.PeriodValuesForAttribute(attr)
 			for attributeValue, periodValue := range attributeValues {
@@ -109,8 +111,8 @@ func SerializeElement(e patterns.Element) ElementDTO {
 }
 
 // DeserializeElement returns an element from a dto
-func DeserializeElement(dto ElementDTO) (patterns.Element, error) {
-	var result patterns.Element
+func DeserializeElement(dto ElementDTO) (nodes.Element, error) {
+	var result nodes.Element
 	if len(dto.Roles) != 0 && len(dto.Attributes) != 0 {
 		return result, errors.New("both relation and entity parts. Not supported")
 	}
@@ -124,14 +126,14 @@ func DeserializeElement(dto ElementDTO) (patterns.Element, error) {
 	id := dto.Id
 	roles := dto.Roles
 	if len(roles) != 0 {
-		relation := patterns.NewRelationWithIdAndRoles(id, dto.Traits, roles)
+		relation := nodes.NewRelationWithIdAndRoles(id, dto.Traits, roles)
 		if err := relation.SetActivePeriod(activity); err != nil {
 			return result, err
 		}
 
 		return &relation, nil
 	} else {
-		entity, errEntity := patterns.NewEntityWithId(id, dto.Traits, activity)
+		entity, errEntity := nodes.NewEntityWithId(id, dto.Traits, activity)
 		if errEntity != nil {
 			return result, errEntity
 		}

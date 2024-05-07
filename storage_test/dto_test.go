@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/zefrenchwan/nodes.git/nodes"
-	"github.com/zefrenchwan/nodes.git/storage"
+	"github.com/zefrenchwan/patterns.git/nodes"
+	"github.com/zefrenchwan/patterns.git/storage"
 )
 
 func TestEntitySerde(t *testing.T) {
