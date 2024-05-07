@@ -1,14 +1,14 @@
-package patterns_test
+package nodes_test
 
 import (
 	"testing"
 	"time"
 
-	"github.com/zefrenchwan/patterns.git/patterns"
+	"github.com/zefrenchwan/nodes.git/nodes"
 )
 
 func TestEntityFullActive(t *testing.T) {
-	entity := patterns.NewEntity([]string{"city"})
+	entity := nodes.NewEntity([]string{"city"})
 	entity.SetValue("name", "Paris")
 
 	activity := entity.ActivePeriod()
@@ -27,9 +27,9 @@ func TestEntityFullActive(t *testing.T) {
 }
 
 func TestEntityActive(t *testing.T) {
-	activityInterval := patterns.NewRightInfiniteTimeInterval(time.Now().UTC(), false)
-	activity := patterns.NewPeriod(activityInterval)
-	entity, _ := patterns.NewEntityDuring([]string{"city"}, activity)
+	activityInterval := nodes.NewRightInfiniteTimeInterval(time.Now().UTC(), false)
+	activity := nodes.NewPeriod(activityInterval)
+	entity, _ := nodes.NewEntityDuring([]string{"city"}, activity)
 	entity.SetValue("name", "Paris")
 
 	values, errValues := entity.PeriodValuesForAttribute("name")

@@ -1,15 +1,13 @@
-package patterns_test
+package nodes_test
 
 import (
 	"slices"
 	"testing"
-
-	"github.com/zefrenchwan/patterns.git/patterns"
 )
 
 func TestIntervalsCompare(t *testing.T) {
-	comparator := patterns.NewIntComparator()
-	var a, b patterns.Interval[int]
+	comparator := nodes.NewIntComparator()
+	var a, b nodes.Interval[int]
 	// empty test
 	a = comparator.NewEmptyInterval()
 	b = comparator.NewEmptyInterval()
@@ -112,8 +110,8 @@ func TestIntervalsCompare(t *testing.T) {
 }
 
 func TestIntervalComplement(t *testing.T) {
-	comparator := patterns.NewIntComparator()
-	var a patterns.Interval[int]
+	comparator := nodes.NewIntComparator()
+	var a nodes.Interval[int]
 	// empty test
 	a = comparator.NewEmptyInterval()
 	result := comparator.Complement(a)
@@ -169,24 +167,24 @@ func TestIntervalComplement(t *testing.T) {
 }
 
 func TestIntervalComplementMixed(t *testing.T) {
-	comparator := patterns.NewIntComparator()
+	comparator := nodes.NewIntComparator()
 
 	complements := comparator.Complement(comparator.NewLeftInfiniteInterval(10, false))
 	expected := comparator.NewRightInfiniteInterval(10, true)
-	if !slicesIntervalCompare(comparator, []patterns.Interval[int]{expected}, complements) {
+	if !slicesIntervalCompare(comparator, []nodes.Interval[int]{expected}, complements) {
 		t.Error("left infinite failure")
 	}
 
 	complements = comparator.Complement(comparator.NewLeftInfiniteInterval(10, true))
 	expected = comparator.NewRightInfiniteInterval(10, false)
-	if !slicesIntervalCompare(comparator, []patterns.Interval[int]{expected}, complements) {
+	if !slicesIntervalCompare(comparator, []nodes.Interval[int]{expected}, complements) {
 		t.Error("left infinite failure")
 	}
 }
 
 func TestIntervalIntersection(t *testing.T) {
-	comparator := patterns.NewIntComparator()
-	var a, b, result, expected patterns.Interval[int]
+	comparator := nodes.NewIntComparator()
+	var a, b, result, expected nodes.Interval[int]
 
 	// test empty and full
 	a = comparator.NewFullInterval()
@@ -253,13 +251,13 @@ func TestIntervalIntersection(t *testing.T) {
 	}
 }
 
-func slicesIntervalCompare[T any](comparator patterns.TypedComparator[T], expected []patterns.Interval[T], got []patterns.Interval[T]) bool {
+func slicesIntervalCompare[T any](comparator nodes.TypedComparator[T], expected []nodes.Interval[T], got []nodes.Interval[T]) bool {
 	if len(expected) != len(got) {
 		return false
 	}
 
 	for _, value := range expected {
-		localTest := func(a patterns.Interval[T]) bool { return comparator.CompareInterval(a, value) == 0 }
+		localTest := func(a nodes.Interval[T]) bool { return comparator.CompareInterval(a, value) == 0 }
 		if !slices.ContainsFunc(got, localTest) {
 			return false
 		}
@@ -269,10 +267,10 @@ func slicesIntervalCompare[T any](comparator patterns.TypedComparator[T], expect
 }
 
 func TestIntervalUnion(t *testing.T) {
-	comparator := patterns.NewIntComparator()
+	comparator := nodes.NewIntComparator()
 
 	// test union of empty sets
-	unions := []patterns.Interval[int]{
+	unions := []nodes.Interval[int]{
 		comparator.NewEmptyInterval(), comparator.NewEmptyInterval(),
 	}
 
@@ -325,7 +323,7 @@ func TestIntervalUnion(t *testing.T) {
 	right := comparator.NewRightInfiniteInterval(1000, false)
 
 	result = comparator.Union(left, finite, right)
-	if !slicesIntervalCompare(comparator, []patterns.Interval[int]{left, right, finite}, result) {
+	if !slicesIntervalCompare(comparator, []nodes.Interval[int]{left, right, finite}, result) {
 		t.Error("grouping separated intervals")
 	}
 
@@ -333,7 +331,7 @@ func TestIntervalUnion(t *testing.T) {
 	left = comparator.NewLeftInfiniteInterval(0, false)
 	right = comparator.NewRightInfiniteInterval(0, false)
 	result = comparator.Union(left, right)
-	if !slicesIntervalCompare(comparator, []patterns.Interval[int]{left, right}, result) {
+	if !slicesIntervalCompare(comparator, []nodes.Interval[int]{left, right}, result) {
 		t.Error("grouping intervals with same values but separated borders")
 	} else if !slicesIntervalCompare(comparator, result, comparator.Union(right, left)) {
 		t.Error("broken symetry")
@@ -342,7 +340,7 @@ func TestIntervalUnion(t *testing.T) {
 	left = comparator.NewLeftInfiniteInterval(0, false)
 	right = comparator.NewRightInfiniteInterval(10, true)
 	result = comparator.Union(left, right)
-	if !slicesIntervalCompare(comparator, []patterns.Interval[int]{left, right}, result) {
+	if !slicesIntervalCompare(comparator, []nodes.Interval[int]{left, right}, result) {
 		t.Error("grouping intervals with same values but separated borders")
 	} else if !slicesIntervalCompare(comparator, result, comparator.Union(right, left)) {
 		t.Error("broken symetry")
@@ -351,7 +349,7 @@ func TestIntervalUnion(t *testing.T) {
 	left = comparator.NewLeftInfiniteInterval(0, false)
 	right = comparator.NewRightInfiniteInterval(0, true)
 	result = comparator.Union(left, right)
-	if !slicesIntervalCompare(comparator, []patterns.Interval[int]{comparator.NewFullInterval()}, result) {
+	if !slicesIntervalCompare(comparator, []nodes.Interval[int]{comparator.NewFullInterval()}, result) {
 		t.Error("grouping intervals with same values but separated borders")
 	} else if !slicesIntervalCompare(comparator, result, comparator.Union(right, left)) {
 		t.Error("broken symetry")
@@ -360,7 +358,7 @@ func TestIntervalUnion(t *testing.T) {
 	left = comparator.NewLeftInfiniteInterval(10, false)
 	right = comparator.NewRightInfiniteInterval(0, false)
 	result = comparator.Union(left, right)
-	if !slicesIntervalCompare(comparator, []patterns.Interval[int]{comparator.NewFullInterval()}, result) {
+	if !slicesIntervalCompare(comparator, []nodes.Interval[int]{comparator.NewFullInterval()}, result) {
 		t.Error("grouping non separated intervals")
 	} else if !slicesIntervalCompare(comparator, result, comparator.Union(right, left)) {
 		t.Error("broken symetry")
@@ -368,13 +366,13 @@ func TestIntervalUnion(t *testing.T) {
 }
 
 func TestIntervalUnionFinite(t *testing.T) {
-	comparator := patterns.NewIntComparator()
+	comparator := nodes.NewIntComparator()
 
 	// separated despite same values
 	left := comparator.NewLeftInfiniteInterval(10, false)
 	right, _ := comparator.NewFiniteInterval(10, 100, false, true)
 	result := comparator.Union(left, right)
-	if !slicesIntervalCompare(comparator, []patterns.Interval[int]{left, right}, result) {
+	if !slicesIntervalCompare(comparator, []nodes.Interval[int]{left, right}, result) {
 		t.Error("boundaries failure: same values, both excluded")
 	} else if !slicesIntervalCompare(comparator, result, comparator.Union(right, left)) {
 		t.Error("broken symetry")
@@ -384,7 +382,7 @@ func TestIntervalUnionFinite(t *testing.T) {
 	left, _ = comparator.NewFiniteInterval(0, 5, false, false)
 	right, _ = comparator.NewFiniteInterval(10, 100, false, true)
 	result = comparator.Union(left, right)
-	if !slicesIntervalCompare(comparator, []patterns.Interval[int]{left, right}, result) {
+	if !slicesIntervalCompare(comparator, []nodes.Interval[int]{left, right}, result) {
 		t.Error("totally separated intervals failure")
 	} else if !slicesIntervalCompare(comparator, result, comparator.Union(right, left)) {
 		t.Error("broken symetry")
@@ -394,7 +392,7 @@ func TestIntervalUnionFinite(t *testing.T) {
 	left, _ = comparator.NewFiniteInterval(0, 5, false, false)
 	right, _ = comparator.NewFiniteInterval(-5, 50, false, true)
 	result = comparator.Union(left, right)
-	if !slicesIntervalCompare(comparator, []patterns.Interval[int]{right}, result) {
+	if !slicesIntervalCompare(comparator, []nodes.Interval[int]{right}, result) {
 		t.Error("one contains the other")
 	} else if !slicesIntervalCompare(comparator, result, comparator.Union(right, left)) {
 		t.Error("broken symetry")
@@ -405,7 +403,7 @@ func TestIntervalUnionFinite(t *testing.T) {
 	right, _ = comparator.NewFiniteInterval(0, 5, false, true)
 	expected, _ := comparator.NewFiniteInterval(0, 5, true, true)
 	result = comparator.Union(left, right)
-	if !slicesIntervalCompare(comparator, []patterns.Interval[int]{expected}, result) {
+	if !slicesIntervalCompare(comparator, []nodes.Interval[int]{expected}, result) {
 		t.Error("one contains the other with same values")
 	} else if !slicesIntervalCompare(comparator, result, comparator.Union(right, left)) {
 		t.Error("broken symetry")
@@ -416,7 +414,7 @@ func TestIntervalUnionFinite(t *testing.T) {
 	right, _ = comparator.NewFiniteInterval(2, 10, false, true)
 	expected, _ = comparator.NewFiniteInterval(0, 10, true, true)
 	result = comparator.Union(left, right)
-	if !slicesIntervalCompare(comparator, []patterns.Interval[int]{expected}, result) {
+	if !slicesIntervalCompare(comparator, []nodes.Interval[int]{expected}, result) {
 		t.Error("non separated intervals")
 	} else if !slicesIntervalCompare(comparator, result, comparator.Union(right, left)) {
 		t.Error("broken symetry")
@@ -424,7 +422,7 @@ func TestIntervalUnionFinite(t *testing.T) {
 }
 
 func TestIntervalIntersectionMixed(t *testing.T) {
-	comparator := patterns.NewIntComparator()
+	comparator := nodes.NewIntComparator()
 
 	a := comparator.NewLeftInfiniteInterval(10, true)
 	b := comparator.NewRightInfiniteInterval(0, false)
@@ -446,7 +444,7 @@ func TestIntervalIntersectionMixed(t *testing.T) {
 }
 
 func TestRemoveSingle(t *testing.T) {
-	comparator := patterns.NewIntComparator()
+	comparator := nodes.NewIntComparator()
 
 	// test remove nothing
 	base := comparator.NewFullInterval()
@@ -529,7 +527,7 @@ func TestRemoveSingle(t *testing.T) {
 	other = comparator.NewRightInfiniteInterval(0, true)
 	expected := comparator.NewLeftInfiniteInterval(0, false)
 	result = comparator.Remove(base, other)
-	if !slicesIntervalCompare(comparator, []patterns.Interval[int]{expected}, result) {
+	if !slicesIntervalCompare(comparator, []nodes.Interval[int]{expected}, result) {
 		t.Error("failed remove, should be ]0, 100[")
 	}
 
@@ -538,7 +536,7 @@ func TestRemoveSingle(t *testing.T) {
 	other = comparator.NewLeftInfiniteInterval(0, true)
 	expected, _ = comparator.NewFiniteInterval(0, 100, false, false)
 	result = comparator.Remove(base, other)
-	if !slicesIntervalCompare(comparator, []patterns.Interval[int]{expected}, result) {
+	if !slicesIntervalCompare(comparator, []nodes.Interval[int]{expected}, result) {
 		t.Error("failed remove, should be ]0, 100[")
 	}
 
@@ -547,7 +545,7 @@ func TestRemoveSingle(t *testing.T) {
 	other = comparator.NewRightInfiniteInterval(100, false)
 	expected, _ = comparator.NewFiniteInterval(10, 100, true, true)
 	result = comparator.Remove(base, other)
-	if !slicesIntervalCompare(comparator, []patterns.Interval[int]{expected}, result) {
+	if !slicesIntervalCompare(comparator, []nodes.Interval[int]{expected}, result) {
 		t.Error("failed remove, should be [10, 100]")
 	}
 
@@ -556,7 +554,7 @@ func TestRemoveSingle(t *testing.T) {
 	other = comparator.NewRightInfiniteInterval(10, false)
 	expected, _ = comparator.NewFiniteInterval(10, 10, true, true)
 	result = comparator.Remove(base, other)
-	if !slicesIntervalCompare(comparator, []patterns.Interval[int]{expected}, result) {
+	if !slicesIntervalCompare(comparator, []nodes.Interval[int]{expected}, result) {
 		t.Error("failed reduction to point")
 	}
 
@@ -565,7 +563,7 @@ func TestRemoveSingle(t *testing.T) {
 	other = comparator.NewRightInfiniteInterval(10, true)
 	expected = comparator.NewLeftInfiniteInterval(10, false)
 	result = comparator.Remove(base, other)
-	if !slicesIntervalCompare(comparator, []patterns.Interval[int]{expected}, result) {
+	if !slicesIntervalCompare(comparator, []nodes.Interval[int]{expected}, result) {
 		t.Error("failed reduction to point")
 	}
 
@@ -573,7 +571,7 @@ func TestRemoveSingle(t *testing.T) {
 	base = comparator.NewLeftInfiniteInterval(10, false)
 	other = comparator.NewRightInfiniteInterval(10, false)
 	result = comparator.Remove(base, other)
-	if !slicesIntervalCompare(comparator, []patterns.Interval[int]{base}, result) {
+	if !slicesIntervalCompare(comparator, []nodes.Interval[int]{base}, result) {
 		t.Error("failed empty intersection test")
 	}
 
@@ -582,7 +580,7 @@ func TestRemoveSingle(t *testing.T) {
 	other = comparator.NewLeftInfiniteInterval(10, false)
 	expected, _ = comparator.NewFiniteInterval(10, 10, true, true)
 	result = comparator.Remove(base, other)
-	if !slicesIntervalCompare(comparator, []patterns.Interval[int]{expected}, result) {
+	if !slicesIntervalCompare(comparator, []nodes.Interval[int]{expected}, result) {
 		t.Error("failed reduction to point")
 	}
 
@@ -591,7 +589,7 @@ func TestRemoveSingle(t *testing.T) {
 	other = comparator.NewRightInfiniteInterval(10, false)
 	expected, _ = comparator.NewFiniteInterval(10, 10, true, true)
 	result = comparator.Remove(base, other)
-	if !slicesIntervalCompare(comparator, []patterns.Interval[int]{expected}, result) {
+	if !slicesIntervalCompare(comparator, []nodes.Interval[int]{expected}, result) {
 		t.Error("failed reduction to point")
 	}
 
@@ -600,20 +598,20 @@ func TestRemoveSingle(t *testing.T) {
 	other = comparator.NewRightInfiniteInterval(100, false)
 	expected, _ = comparator.NewFiniteInterval(10, 100, true, true)
 	result = comparator.Remove(base, other)
-	if !slicesIntervalCompare(comparator, []patterns.Interval[int]{expected}, result) {
+	if !slicesIntervalCompare(comparator, []nodes.Interval[int]{expected}, result) {
 		t.Error("failed getting finite part from two right infinites")
 	}
 
 }
 
 func TestRemoveSingleFinite(t *testing.T) {
-	comparator := patterns.NewIntComparator()
+	comparator := nodes.NewIntComparator()
 
 	base, _ := comparator.NewFiniteInterval(10, 100, true, false)
 	other := comparator.NewRightInfiniteInterval(50, false)
 	expected, _ := comparator.NewFiniteInterval(10, 50, true, true)
 	result := comparator.Remove(base, other)
-	if !slicesIntervalCompare(comparator, []patterns.Interval[int]{expected}, result) {
+	if !slicesIntervalCompare(comparator, []nodes.Interval[int]{expected}, result) {
 		t.Error("failed finite interval remove")
 	}
 
@@ -621,7 +619,7 @@ func TestRemoveSingleFinite(t *testing.T) {
 	other = comparator.NewLeftInfiniteInterval(50, false)
 	expected, _ = comparator.NewFiniteInterval(50, 100, true, true)
 	result = comparator.Remove(base, other)
-	if !slicesIntervalCompare(comparator, []patterns.Interval[int]{expected}, result) {
+	if !slicesIntervalCompare(comparator, []nodes.Interval[int]{expected}, result) {
 		t.Error("failed finite interval remove")
 	}
 
@@ -630,7 +628,7 @@ func TestRemoveSingleFinite(t *testing.T) {
 	other, _ = comparator.NewFiniteInterval(100, 100, true, true)
 	expected, _ = comparator.NewFiniteInterval(100, 200, false, true)
 	result = comparator.Remove(base, other)
-	if !slicesIntervalCompare(comparator, []patterns.Interval[int]{expected}, result) {
+	if !slicesIntervalCompare(comparator, []nodes.Interval[int]{expected}, result) {
 		t.Error("failed remove point")
 	}
 
@@ -638,7 +636,7 @@ func TestRemoveSingleFinite(t *testing.T) {
 	other, _ = comparator.NewFiniteInterval(200, 200, true, true)
 	expected, _ = comparator.NewFiniteInterval(100, 200, true, false)
 	result = comparator.Remove(base, other)
-	if !slicesIntervalCompare(comparator, []patterns.Interval[int]{expected}, result) {
+	if !slicesIntervalCompare(comparator, []nodes.Interval[int]{expected}, result) {
 		t.Error("failed remove point")
 	}
 
@@ -646,7 +644,7 @@ func TestRemoveSingleFinite(t *testing.T) {
 	other, _ = comparator.NewFiniteInterval(100, 100, true, true)
 	expected, _ = comparator.NewFiniteInterval(100, 200, false, true)
 	result = comparator.Remove(base, other)
-	if !slicesIntervalCompare(comparator, []patterns.Interval[int]{expected}, result) {
+	if !slicesIntervalCompare(comparator, []nodes.Interval[int]{expected}, result) {
 		t.Error("failed remove point")
 	}
 
@@ -654,13 +652,13 @@ func TestRemoveSingleFinite(t *testing.T) {
 	other, _ = comparator.NewFiniteInterval(200, 200, true, true)
 	expected, _ = comparator.NewFiniteInterval(100, 200, true, false)
 	result = comparator.Remove(base, other)
-	if !slicesIntervalCompare(comparator, []patterns.Interval[int]{expected}, result) {
+	if !slicesIntervalCompare(comparator, []nodes.Interval[int]{expected}, result) {
 		t.Error("failed remove point")
 	}
 }
 
 func TestRemoveSplit(t *testing.T) {
-	comparator := patterns.NewIntComparator()
+	comparator := nodes.NewIntComparator()
 
 	// split parts
 	base := comparator.NewRightInfiniteInterval(10, true)
@@ -668,7 +666,7 @@ func TestRemoveSplit(t *testing.T) {
 	expectedPartOne, _ := comparator.NewFiniteInterval(10, 100, true, false)
 	expectedPartTwo := comparator.NewRightInfiniteInterval(200, true)
 	result := comparator.Remove(base, other)
-	if !slicesIntervalCompare(comparator, []patterns.Interval[int]{expectedPartOne, expectedPartTwo}, result) {
+	if !slicesIntervalCompare(comparator, []nodes.Interval[int]{expectedPartOne, expectedPartTwo}, result) {
 		t.Error("failed splitting right infinite")
 	}
 }

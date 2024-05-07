@@ -3,8 +3,6 @@ package storage
 import (
 	"errors"
 	"slices"
-
-	"github.com/zefrenchwan/patterns.git/patterns"
 )
 
 const (

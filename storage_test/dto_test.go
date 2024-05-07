@@ -5,22 +5,22 @@ import (
 	"testing"
 	"time"
 
-	"github.com/zefrenchwan/patterns.git/patterns"
-	"github.com/zefrenchwan/patterns.git/storage"
+	"github.com/zefrenchwan/nodes.git/nodes"
+	"github.com/zefrenchwan/nodes.git/storage"
 )
 
 func TestEntitySerde(t *testing.T) {
 	now := time.Now().UTC().Truncate(1 * time.Second)
-	leftInterval := patterns.NewLeftInfiniteTimeInterval(now, false)
-	rightInterval := patterns.NewRightInfiniteTimeInterval(now, true)
-	leftPeriod := patterns.NewPeriod(leftInterval)
-	rightPeriod := patterns.NewPeriod(rightInterval)
+	leftInterval := nodes.NewLeftInfiniteTimeInterval(now, false)
+	rightInterval := nodes.NewRightInfiniteTimeInterval(now, true)
+	leftPeriod := nodes.NewPeriod(leftInterval)
+	rightPeriod := nodes.NewPeriod(rightInterval)
 
-	entity := patterns.NewEntity([]string{"Person"})
+	entity := nodes.NewEntity([]string{"Person"})
 	entity.AddValue("last name", "MEEE", leftPeriod)
 	entity.AddValue("first name", "Me", rightPeriod)
 
-	var reverseEntity *patterns.Entity
+	var reverseEntity *nodes.Entity
 	dto := storage.SerializeElement(&entity)
 	reverse, errReverse := storage.DeserializeElement(dto)
 	if errReverse != nil {
@@ -29,7 +29,7 @@ func TestEntitySerde(t *testing.T) {
 		t.Fail()
 	} else if slices.Compare(entity.Traits(), reverse.Traits()) != 0 {
 		t.Fail()
-	} else if r, ok := reverse.(*patterns.Entity); !ok {
+	} else if r, ok := reverse.(*nodes.Entity); !ok {
 		t.Error("invalid type found")
 	} else {
 		reverseEntity = r
@@ -71,15 +71,15 @@ func TestEntitySerde(t *testing.T) {
 
 func TestRelationSerde(t *testing.T) {
 	now := time.Now().UTC().Truncate(1 * time.Second)
-	leftInterval := patterns.NewLeftInfiniteTimeInterval(now, false)
-	leftPeriod := patterns.NewPeriod(leftInterval)
+	leftInterval := nodes.NewLeftInfiniteTimeInterval(now, false)
+	leftPeriod := nodes.NewPeriod(leftInterval)
 
 	links := map[string][]string{
-		patterns.SUBJECT_ROLE: {"X"},
-		patterns.OBJECT_ROLE:  {"Y"},
+		nodes.SUBJECT_ROLE: {"X"},
+		nodes.OBJECT_ROLE:  {"Y"},
 	}
 
-	relation := patterns.NewRelationWithIdAndRoles("popo", []string{"Couple"}, links)
+	relation := nodes.NewRelationWithIdAndRoles("popo", []string{"Couple"}, links)
 	relation.SetActivePeriod(leftPeriod)
 
 	dto := storage.SerializeElement(&relation)
@@ -95,8 +95,8 @@ func TestRelationSerde(t *testing.T) {
 		t.Fail()
 	}
 
-	var reverseRelation *patterns.Relation
-	if r, ok := reverse.(*patterns.Relation); !ok {
+	var reverseRelation *nodes.Relation
+	if r, ok := reverse.(*nodes.Relation); !ok {
 		t.Error("invalid dto type")
 	} else {
 		reverseRelation = r

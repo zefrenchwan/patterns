@@ -1,4 +1,4 @@
-package patterns
+package nodes
 
 // Element is a relation or an entity.
 // A relation links elements together (recursive definition on purpose).

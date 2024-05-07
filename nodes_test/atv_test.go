@@ -1,25 +1,23 @@
-package patterns_test
+package nodes_test
 
 import (
 	"testing"
 	"time"
-
-	"github.com/zefrenchwan/patterns.git/patterns"
 )
 
 func TestActiveTimeValues(t *testing.T) {
-	a := patterns.NewActiveTimeValues()
+	a := nodes.NewActiveTimeValues()
 
 	now := time.Now().UTC()
 	after := now.AddDate(1, 0, 0)
 	before := now.AddDate(-1, 0, 0)
 
-	active, _ := patterns.NewFiniteTimeInterval(before, after, true, true)
-	attrInterval := patterns.NewRightInfiniteTimeInterval(now, true)
+	active, _ := nodes.NewFiniteTimeInterval(before, after, true, true)
+	attrInterval := nodes.NewRightInfiniteTimeInterval(now, true)
 
-	a.SetActivity(patterns.NewPeriod(active))
+	a.SetActivity(nodes.NewPeriod(active))
 	a.SetValue("attr", "test")
-	a.AddValue("attr", "other", patterns.NewPeriod(attrInterval))
+	a.AddValue("attr", "other", nodes.NewPeriod(attrInterval))
 
 	valueIntervalMap, errRead := a.TimeValuesForAttribute("attr")
 	if errRead != nil {
@@ -35,16 +33,16 @@ func TestActiveTimeValues(t *testing.T) {
 	}
 
 	// expected is between before and now => test, and between now and after, other
-	expectedBefore, _ := patterns.NewFiniteTimeInterval(before, now, true, false)
-	expectedAfter, _ := patterns.NewFiniteTimeInterval(now, after, true, true)
+	expectedBefore, _ := nodes.NewFiniteTimeInterval(before, now, true, false)
+	expectedAfter, _ := nodes.NewFiniteTimeInterval(now, after, true, true)
 	valueBefore := valueIntervalMap["test"][0]
 	valueAfter := valueIntervalMap["other"][0]
 
-	if patterns.TimeIntervalsCompare(expectedBefore, valueBefore) != 0 {
+	if nodes.TimeIntervalsCompare(expectedBefore, valueBefore) != 0 {
 		t.Error("error when intersecting period and activity")
 	}
 
-	if patterns.TimeIntervalsCompare(expectedAfter, valueAfter) != 0 {
+	if nodes.TimeIntervalsCompare(expectedAfter, valueAfter) != 0 {
 		t.Error("error when intersecting period and activity")
 	}
 }

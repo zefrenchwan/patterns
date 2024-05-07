@@ -1,15 +1,13 @@
-package patterns_test
+package nodes_test
 
 import (
 	"slices"
 	"testing"
 	"time"
-
-	"github.com/zefrenchwan/patterns.git/patterns"
 )
 
 func TestTimeValuesSetAttribute(t *testing.T) {
-	instance := patterns.NewTimeValues()
+	instance := nodes.NewTimeValues()
 
 	if err := instance.SetValue("attr", "a value"); err != nil {
 		t.Fail()
@@ -40,14 +38,14 @@ func TestTimeValuesSetAttribute(t *testing.T) {
 }
 
 func TestTimeValuesAddAttribute(t *testing.T) {
-	instance := patterns.NewTimeValues()
+	instance := nodes.NewTimeValues()
 
 	now := time.Now().UTC()
-	beforeNow := patterns.NewLeftInfiniteTimeInterval(now, false)
-	afterNow := patterns.NewRightInfiniteTimeInterval(now, true)
+	beforeNow := nodes.NewLeftInfiniteTimeInterval(now, false)
+	afterNow := nodes.NewRightInfiniteTimeInterval(now, true)
 
-	instance.AddValue("attr", "before", patterns.NewPeriod(beforeNow))
-	instance.AddValue("attr", "after", patterns.NewPeriod(afterNow))
+	instance.AddValue("attr", "before", nodes.NewPeriod(beforeNow))
+	instance.AddValue("attr", "after", nodes.NewPeriod(afterNow))
 
 	// test values, not periods
 	var values []string
@@ -71,24 +69,24 @@ func TestTimeValuesAddAttribute(t *testing.T) {
 		t.Error("missing values in map of values")
 	} else if beforeValue := valuesMap["before"]; len(beforeValue) != 1 {
 		t.Error("intervals test failed")
-	} else if patterns.TimeIntervalsCompare(beforeNow, beforeValue[0]) != 0 {
+	} else if nodes.TimeIntervalsCompare(beforeNow, beforeValue[0]) != 0 {
 		t.Error("intervals test failed")
 	} else if afterValue := valuesMap["after"]; len(afterValue) != 1 {
 		t.Error("intervals test failed")
-	} else if patterns.TimeIntervalsCompare(afterValue[0], afterNow) != 0 {
+	} else if nodes.TimeIntervalsCompare(afterValue[0], afterNow) != 0 {
 		t.Error("intervals test failed")
 	}
 }
 
 func TestTimeValuesPeriodChange(t *testing.T) {
-	instance := patterns.NewTimeValues()
+	instance := nodes.NewTimeValues()
 
 	now := time.Now().UTC()
-	beforeNow := patterns.NewLeftInfiniteTimeInterval(now, false)
-	afterNow := patterns.NewRightInfiniteTimeInterval(now, true)
+	beforeNow := nodes.NewLeftInfiniteTimeInterval(now, false)
+	afterNow := nodes.NewRightInfiniteTimeInterval(now, true)
 
 	instance.SetValue("attr", "before")
-	instance.AddValue("attr", "after", patterns.NewPeriod(afterNow))
+	instance.AddValue("attr", "after", nodes.NewPeriod(afterNow))
 
 	// test values, not periods
 	var values []string
@@ -112,30 +110,30 @@ func TestTimeValuesPeriodChange(t *testing.T) {
 		t.Error("missing values in map of values")
 	} else if beforeValue := valuesMap["before"]; len(beforeValue) != 1 {
 		t.Error("intervals test failed")
-	} else if patterns.TimeIntervalsCompare(beforeNow, beforeValue[0]) != 0 {
+	} else if nodes.TimeIntervalsCompare(beforeNow, beforeValue[0]) != 0 {
 		t.Error("intervals test failed")
 	} else if afterValue := valuesMap["after"]; len(afterValue) != 1 {
 		t.Error("intervals test failed")
-	} else if patterns.TimeIntervalsCompare(afterValue[0], afterNow) != 0 {
+	} else if nodes.TimeIntervalsCompare(afterValue[0], afterNow) != 0 {
 		t.Error("intervals test failed")
 	}
 }
 
 func TestPeriodForAttributes(t *testing.T) {
-	instance := patterns.NewTimeValues()
+	instance := nodes.NewTimeValues()
 
 	now := time.Now().UTC()
 	before := now.AddDate(-1, 0, 0)
 	after := now.AddDate(1, 0, 0)
 
-	beforeInterval := patterns.NewRightInfiniteTimeInterval(before, false)
-	beforePeriod := patterns.NewPeriod(beforeInterval)
-	nowInterval := patterns.NewRightInfiniteTimeInterval(now, false)
-	nowPeriod := patterns.NewPeriod(nowInterval)
-	afterInterval := patterns.NewRightInfiniteTimeInterval(after, false)
-	afterPeriod := patterns.NewPeriod(afterInterval)
-	expectedIntervalValueBefore, _ := patterns.NewFiniteTimeInterval(before, now, false, true)
-	expectedPeriodValueBefore := patterns.NewPeriod(expectedIntervalValueBefore)
+	beforeInterval := nodes.NewRightInfiniteTimeInterval(before, false)
+	beforePeriod := nodes.NewPeriod(beforeInterval)
+	nowInterval := nodes.NewRightInfiniteTimeInterval(now, false)
+	nowPeriod := nodes.NewPeriod(nowInterval)
+	afterInterval := nodes.NewRightInfiniteTimeInterval(after, false)
+	afterPeriod := nodes.NewPeriod(afterInterval)
+	expectedIntervalValueBefore, _ := nodes.NewFiniteTimeInterval(before, now, false, true)
+	expectedPeriodValueBefore := nodes.NewPeriod(expectedIntervalValueBefore)
 
 	// afterPeriod should be the period for value since after, before of set and not add
 	// BUT, between second and third line, value since before should reduce to (before, now)
@@ -156,23 +154,23 @@ func TestPeriodForAttributes(t *testing.T) {
 }
 
 func TestRemovePeriodInTimeValue(t *testing.T) {
-	instance := patterns.NewTimeValues()
+	instance := nodes.NewTimeValues()
 
 	now := time.Now().UTC()
 	after := now.AddDate(1, 0, 0)
-	expectedInterval := patterns.NewLeftInfiniteTimeInterval(now, true)
-	afterInterval := patterns.NewRightInfiniteTimeInterval(after, false)
+	expectedInterval := nodes.NewLeftInfiniteTimeInterval(now, true)
+	afterInterval := nodes.NewRightInfiniteTimeInterval(after, false)
 
 	instance.SetValue("attr", "default value")
-	instance.SetPeriodForValue("attr", "after value won't appear", patterns.NewPeriod(afterInterval))
-	instance.RemovePeriodForAttribute("attr", patterns.NewPeriod(patterns.NewRightInfiniteTimeInterval(now, false)))
+	instance.SetPeriodForValue("attr", "after value won't appear", nodes.NewPeriod(afterInterval))
+	instance.RemovePeriodForAttribute("attr", nodes.NewPeriod(nodes.NewRightInfiniteTimeInterval(now, false)))
 
 	valueIntervalsMap, _ := instance.TimeValuesForAttribute("attr")
 	if len(valueIntervalsMap) != 1 {
 		t.Error("keeping old value")
 	} else if intervals := valueIntervalsMap["default value"]; len(intervals) != 1 {
 		t.Error("intervals cut failure")
-	} else if patterns.TimeIntervalsCompare(expectedInterval, intervals[0]) != 0 {
+	} else if nodes.TimeIntervalsCompare(expectedInterval, intervals[0]) != 0 {
 		t.Error("removing part of interval failed")
 	}
 }

@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/zefrenchwan/patterns.git/patterns"
 )
 
 const (
@@ -35,10 +34,10 @@ func NewDao(ctx context.Context, url string) (Dao, error) {
 }
 
 // UpsertElement upserts an element, no matter an entity or a relation
-func (d *Dao) UpsertElement(ctx context.Context, e patterns.Element) error {
-	if entity, okEntity := e.(patterns.FormalInstance); okEntity {
+func (d *Dao) UpsertElement(ctx context.Context, e nodes.Element) error {
+	if entity, okEntity := e.(nodes.FormalInstance); okEntity {
 		return d.UpsertEntity(ctx, entity)
-	} else if relation, okRelation := e.(patterns.FormalRelation); okRelation {
+	} else if relation, okRelation := e.(nodes.FormalRelation); okRelation {
 		return d.UpsertRelation(ctx, relation)
 	} else {
 		return errors.New("unsupported element type")
@@ -46,7 +45,7 @@ func (d *Dao) UpsertElement(ctx context.Context, e patterns.Element) error {
 }
 
 // UpsertEntity upserts an entity
-func (d *Dao) UpsertEntity(ctx context.Context, e patterns.FormalInstance) error {
+func (d *Dao) UpsertEntity(ctx context.Context, e nodes.FormalInstance) error {
 	if d == nil || d.pool == nil {
 		return errors.New("dao not initialized")
 	}
@@ -96,7 +95,7 @@ func (d *Dao) UpsertEntity(ctx context.Context, e patterns.FormalInstance) error
 }
 
 // UpsertRelation upserts all the relation (traits, roles)
-func (d *Dao) UpsertRelation(ctx context.Context, r patterns.FormalRelation) error {
+func (d *Dao) UpsertRelation(ctx context.Context, r nodes.FormalRelation) error {
 	if d == nil || d.pool == nil {
 		return errors.New("dao not initialized")
 	}
@@ -134,7 +133,7 @@ func (d *Dao) UpsertRelation(ctx context.Context, r patterns.FormalRelation) err
 }
 
 // LoadElementById by id returns the element with that id, if any
-func (d *Dao) LoadElementById(ctx context.Context, id string) (patterns.Element, error) {
+func (d *Dao) LoadElementById(ctx context.Context, id string) (nodes.Element, error) {
 	if d == nil || d.pool == nil {
 		return nil, errors.New("dao not initialized")
 	}
@@ -148,8 +147,8 @@ func (d *Dao) LoadElementById(ctx context.Context, id string) (patterns.Element,
 	}
 
 	// element may be a relation or an entity
-	var relation patterns.Relation
-	var entity patterns.Entity
+	var relation nodes.Relation
+	var entity nodes.Entity
 	var isRelation bool
 	var globalErr error
 	counter := 0
@@ -191,9 +190,9 @@ func (d *Dao) LoadElementById(ctx context.Context, id string) (patterns.Element,
 			}
 
 			if isEntityFromRefType(refType) {
-				entity, _ = patterns.NewEntityWithId(id, traits, period)
+				entity, _ = nodes.NewEntityWithId(id, traits, period)
 			} else {
-				relation = patterns.NewUnlinkedRelationWithId(id, traits)
+				relation = nodes.NewUnlinkedRelationWithId(id, traits)
 				relation.SetActivePeriod(period)
 			}
 		}
@@ -630,7 +629,7 @@ func (d *Dao) Close() {
 }
 
 // serializePeriod returns the period as a string
-func serializePeriod(p patterns.Period) string {
+func serializePeriod(p nodes.Period) string {
 	switch {
 	case p.IsEmptyPeriod():
 		return "];["
@@ -656,18 +655,18 @@ func serializeTimestamp(t time.Time) string {
 }
 
 // serializeInterval serializes a time interval
-func serializeInterval(i patterns.Interval[time.Time]) string {
+func serializeInterval(i nodes.Interval[time.Time]) string {
 	return i.SerializeInterval(serializeTimestamp)
 }
 
 // deserializePeriod gets the values from the database and returns the matching period
-func deserializePeriod(full bool, value string) (patterns.Period, error) {
+func deserializePeriod(full bool, value string) (nodes.Period, error) {
 	if full {
-		return patterns.NewFullPeriod(), nil
+		return nodes.NewFullPeriod(), nil
 	}
 
 	values := strings.Split(value, "U")
-	return patterns.DeserializePeriod(values, DATE_STORAGE_FORMAT)
+	return nodes.DeserializePeriod(values, DATE_STORAGE_FORMAT)
 }
 
 // isEntityFromRefType returns true if value matches either entity or mixed

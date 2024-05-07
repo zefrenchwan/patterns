@@ -1,16 +1,14 @@
-package patterns_test
+package nodes_test
 
 import (
 	"slices"
 	"strings"
 	"testing"
 	"time"
-
-	"github.com/zefrenchwan/patterns.git/patterns"
 )
 
 func TestPeriodAddRemoveIntervals(t *testing.T) {
-	comparator := patterns.NewTimeComparator()
+	comparator := nodes.NewTimeComparator()
 	now := time.Now().UTC()
 	before := now.AddDate(-1, 0, 0)
 	after := now.AddDate(1, 0, 0)
@@ -18,8 +16,8 @@ func TestPeriodAddRemoveIntervals(t *testing.T) {
 	afterInterval := comparator.NewLeftInfiniteInterval(after, true)
 	beforeInterval := comparator.NewLeftInfiniteInterval(before, false)
 
-	pAfter := patterns.NewPeriod(afterInterval)
-	pBefore := patterns.NewPeriod(beforeInterval)
+	pAfter := nodes.NewPeriod(afterInterval)
+	pBefore := nodes.NewPeriod(beforeInterval)
 
 	// remove same interval
 	pBefore.Remove(pBefore)
@@ -33,8 +31,8 @@ func TestPeriodAddRemoveIntervals(t *testing.T) {
 	}
 
 	// reset
-	pAfter = patterns.NewPeriod(afterInterval)
-	pBefore = patterns.NewPeriod(beforeInterval)
+	pAfter = nodes.NewPeriod(afterInterval)
+	pBefore = nodes.NewPeriod(beforeInterval)
 
 	// remove when other contains receiver
 	pBefore.Remove(pAfter)
@@ -43,8 +41,8 @@ func TestPeriodAddRemoveIntervals(t *testing.T) {
 	}
 
 	// test when period is larger that removed part
-	pAfter = patterns.NewPeriod(afterInterval)
-	pBefore = patterns.NewPeriod(beforeInterval)
+	pAfter = nodes.NewPeriod(afterInterval)
+	pBefore = nodes.NewPeriod(beforeInterval)
 	pAfter.Remove(pBefore)
 	expected := comparator.Remove(afterInterval, beforeInterval)[0]
 	result := pAfter.AsIntervals()
@@ -54,7 +52,7 @@ func TestPeriodAddRemoveIntervals(t *testing.T) {
 }
 
 func TestPeriodRemoveManyIntervals(t *testing.T) {
-	comparator := patterns.NewTimeComparator()
+	comparator := nodes.NewTimeComparator()
 	now := time.Now().UTC()
 	before := now.AddDate(-1, 0, 0)
 	longAgo := before.AddDate(-2, 0, 0)
@@ -65,10 +63,10 @@ func TestPeriodRemoveManyIntervals(t *testing.T) {
 	nowToAfter, _ := comparator.NewFiniteInterval(now, after, true, true)
 
 	// period is ]-oo, longAgo ] union ]before, now[
-	period := patterns.NewPeriod(longAgoInterval)
+	period := nodes.NewPeriod(longAgoInterval)
 	period.AddInterval(beforeToNow)
 	// otherPeriod is [now, after]
-	otherPeriod := patterns.NewPeriod(nowToAfter)
+	otherPeriod := nodes.NewPeriod(nowToAfter)
 	period.Remove(otherPeriod)
 	// period should be the same as before
 	result := period.AsIntervals()
@@ -80,7 +78,7 @@ func TestPeriodRemoveManyIntervals(t *testing.T) {
 }
 
 func TestPeriodsIntersection(t *testing.T) {
-	comparator := patterns.NewTimeComparator()
+	comparator := nodes.NewTimeComparator()
 	now := time.Now().UTC()
 	before := now.AddDate(-1, 0, 0)
 	longAgo := before.AddDate(-2, 0, 0)
@@ -94,10 +92,10 @@ func TestPeriodsIntersection(t *testing.T) {
 	singletonNow, _ := comparator.NewFiniteInterval(now, now, true, true)
 
 	// period is ]-oo, now] union ]after, +oo[
-	period := patterns.NewPeriod(nowInterval)
+	period := nodes.NewPeriod(nowInterval)
 	period.AddInterval(afterInterval)
 	// otherPeriod is ]longAgo, before[ union [now, +oo[
-	otherPeriod := patterns.NewPeriod(longAgoToBefore)
+	otherPeriod := nodes.NewPeriod(longAgoToBefore)
 	otherPeriod.AddInterval(nowOtherInterval)
 	// intersection should be ]longAgo, before[ union ]after, +oo[
 	period.Intersection(otherPeriod)
@@ -111,7 +109,7 @@ func TestPeriodsIntersection(t *testing.T) {
 }
 
 func TestPeriodsComplement(t *testing.T) {
-	comparator := patterns.NewTimeComparator()
+	comparator := nodes.NewTimeComparator()
 	now := time.Now().UTC()
 	before := now.AddDate(-1, 0, 0)
 	longAgo := before.AddDate(-2, 0, 0)
@@ -120,13 +118,13 @@ func TestPeriodsComplement(t *testing.T) {
 
 	afterInterval := comparator.NewRightInfiniteInterval(after, false)
 	intermedInterval, _ := comparator.NewFiniteInterval(longAgo, before, false, true)
-	period := patterns.NewPeriod(afterInterval)
+	period := nodes.NewPeriod(afterInterval)
 	period.AddInterval(intermedInterval)
 
 	// complement should be ]-oo, longAgo] union ]before, after]
 	period.Complement()
 	expectedInterval, _ := comparator.NewFiniteInterval(before, after, false, true)
-	expected := []patterns.Interval[time.Time]{
+	expected := []nodes.Interval[time.Time]{
 		comparator.NewLeftInfiniteInterval(longAgo, true),
 		expectedInterval,
 	}
@@ -140,17 +138,17 @@ func TestPeriodsComplement(t *testing.T) {
 }
 
 func TestPeriodSerde(t *testing.T) {
-	full := patterns.NewFullPeriod()
-	if result := patterns.SerializePeriod(full, "2006-01-02"); slices.Compare(result, []string{"]-oo;+oo["}) != 0 {
+	full := nodes.NewFullPeriod()
+	if result := nodes.SerializePeriod(full, "2006-01-02"); slices.Compare(result, []string{"]-oo;+oo["}) != 0 {
 		t.Errorf("expected ]-oo;+oo[ for full period, got %s", strings.Join(result, ","))
 	}
 
-	empty := patterns.NewEmptyPeriod()
-	if result := patterns.SerializePeriod(empty, "2006-01-02"); slices.Compare(result, []string{"];["}) != 0 {
+	empty := nodes.NewEmptyPeriod()
+	if result := nodes.SerializePeriod(empty, "2006-01-02"); slices.Compare(result, []string{"];["}) != 0 {
 		t.Errorf("expected ];[ for empty period, got %s", strings.Join(result, ","))
 	}
 
-	comparator := patterns.NewTimeComparator()
+	comparator := nodes.NewTimeComparator()
 	now := time.Now().UTC().Truncate(24 * time.Hour)
 	before := now.AddDate(-1, 0, 0)
 	longAgo := before.AddDate(-2, 0, 0)
@@ -159,12 +157,12 @@ func TestPeriodSerde(t *testing.T) {
 	middleInterval, _ := comparator.NewFiniteInterval(before, now, true, true)
 	rightInterval := comparator.NewRightInfiniteInterval(after, false)
 
-	reunion := patterns.NewPeriod(leftInterval)
+	reunion := nodes.NewPeriod(leftInterval)
 	reunion.AddInterval(middleInterval)
 	reunion.AddInterval(rightInterval)
 
-	resultStr := patterns.SerializePeriod(reunion, "2006-01-02")
-	result, errStr := patterns.DeserializePeriod(resultStr, "2006-01-02")
+	resultStr := nodes.SerializePeriod(reunion, "2006-01-02")
+	result, errStr := nodes.DeserializePeriod(resultStr, "2006-01-02")
 	if errStr != nil {
 		t.Errorf("error while reading serialized values: %s", errStr.Error())
 	} else if !reunion.IsSameAs(result) {
