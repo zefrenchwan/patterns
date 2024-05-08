@@ -46,14 +46,6 @@ create table sgraphs.periods (
 
 alter table sgraphs.periods owner to upa;
 
------------------------------------------------------
------------------------------------------------------
------------------------------------------------------
------------------------------------------------------
------------------------------------------------------
------------------------------------------------------
-
-
 -- sgraphs.elements store common part for relation and entity
 create table sgraphs.elements (
 	element_id text primary key,
@@ -96,3 +88,28 @@ create table sgraphs.relation_role (
 
 alter table sgraphs.relation_role owner to upa;
 
+-- sgraphs.layers defines a layer
+create table sgraphs.layers (
+	layer_id bigserial primary key, 
+	layer_name text not null,
+	layer_description text
+);
+
+alter table sgraphs.layers owner to upa;
+
+-- sgraphs.layer_parent links a layer to its parents
+create table sgraphs.layer_parent (
+	layer_source bigint not null references sgraphs.layers(layer_id) on delete cascade,
+	layer_destination bigint not null references sgraphs.layers(layer_id) on delete cascade
+);
+
+alter table sgraphs.layer_parent owner to upa;
+
+-- sgraphs.layer_element links an element to a layer
+create table sgraphs.layer_element (
+	layer_id  bigint references sgraphs.layers(layer_id),
+	element_id text references sgraphs.elements(element_id),
+	element_primary_layer bool default false
+);
+
+alter table sgraphs.layer_element owner to upa;
