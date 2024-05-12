@@ -20,20 +20,8 @@ func InitService(dao storage.Dao) *http.ServeMux {
 	// TODO: add in here your own handlers
 	// ADMIN PART
 	AddGetServiceHandlerToMux(mux, "/status/", checkStatusHandler, parameters)
-	// UPSERT PART
-	AddPostServiceHandlerToMux(mux, "/upsert/elements/", upsertElementsHandler, parameters)
-	// LOAD PART
-	AddGetServiceHandlerToMux(mux, "/load/elements/id/{id}", loadElementHandler, parameters)
-	// SNAPSHOT PART
-	AddGetServiceHandlerToMux(mux, "/snapshot/entities/trait/{trait}", loadActiveEntitiesHandler, parameters)
-	AddGetServiceHandlerToMux(mux, "/snapshot/entities/trait/{trait}/moment/{moment}", loadActiveEntitiesAtDateHandler, parameters)
-	AddGetServiceHandlerToMux(mux, "/snapshot/neighbors/counters/id/{id}", loadRelationsStatsAroundElementHandler, parameters)
-	AddGetServiceHandlerToMux(mux, "/snapshot/neighbors/counters/id/{id}/moment/{moment}", loadRelationsStatsAroundElementAtDateHandler, parameters)
-	AddGetServiceHandlerToMux(mux, "/snapshot/neighbors/counters/operands/id/{id}", loadRelationsStatsWithOperandsAroundElementHandler, parameters)
-	AddGetServiceHandlerToMux(mux, "/snapshot/neighbors/counters/operands/id/{id}/moment/{moment}", loadRelationsStatsWithOperandsAroundElementAtDateHandler, parameters)
-	// SEARCH PART
-	AddGetServiceHandlerToMux(mux, "/search/traits", searchSynonymsHandler, parameters)
-	AddGetServiceHandlerToMux(mux, "/search/neighbors/id/{id}", searchTransitiveEntitiesFromSourceHandler, parameters)
+	// DATA MODIFICATION
+	AddPostServiceHandlerToMux(mux, "/graphs/new", createGraphHandler, parameters)
 	// END OF HANDLERS MODIFICATION
 
 	// mux is complete, all handlers are set
