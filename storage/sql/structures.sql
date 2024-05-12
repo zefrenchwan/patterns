@@ -8,6 +8,27 @@ drop table if exists sgraphs.elements;
 drop table if exists sgraphs.traits;
 drop table if exists sgraphs.reftypes;
 drop table if exists sgraphs.periods;
+drop table if exists sgraphs.inclusions;
+drop table if exists sgraphs.nodes;
+drop table if exists sgraphs.graphs;
+
+
+-------------------------------
+-- GRAPHS GENERAL DEFINITION --
+-------------------------------
+
+-- sgraphs.graphs are graphs that contain versions of nodes
+create table sgraphs.graphs (
+	graph_id text primary key,
+	graph_name text not null, 
+	graph_description text
+);
+
+alter table sgraphs.graphs owner to upa;
+
+------------------------------------------------------
+-- ELEMENTS DEFINITION: TRAITS, ENTITIES, RELATIONS --
+------------------------------------------------------
 
 -- reftypes just defines if the value is an entity, a relation, or may be both
 create table sgraphs.reftypes (
@@ -20,16 +41,6 @@ alter table sgraphs.reftypes owner to upa;
 insert into sgraphs.reftypes(reftype_id, reftype_description) values(1,'entity only');
 insert into sgraphs.reftypes(reftype_id, reftype_description) values(2,'relation only');
 insert into sgraphs.reftypes(reftype_id, reftype_description) values(10, 'mixed');
-
--- sgraphs.traits defines all possible traits
-create table sgraphs.traits (
-	trait_id bigserial primary key, 
-	trait_type int references sgraphs.reftypes(reftype_id),
-	trait text not null,
-	last_update timestamp without time zone default now()::timestamp without time zone
-);
-
-alter table sgraphs.traits owner to upa;
 
 -- sgraphs.periods may be an activity or a period for an attribute. 
 -- Intervals are stored as an ordered array of serialized time intervals
@@ -46,21 +57,30 @@ create table sgraphs.periods (
 
 alter table sgraphs.periods owner to upa;
 
+-- sgraphs.traits defines all possible traits
+create table sgraphs.traits (
+	trait_id bigserial primary key,
+	graph_id text not null references sgraphs.graphs(graph_id) on delete cascade,
+	trait_type int references sgraphs.reftypes(reftype_id),
+	trait text not null
+);
+
+alter table sgraphs.traits owner to upa;
+
 -- sgraphs.elements store common part for relation and entity
 create table sgraphs.elements (
 	element_id text primary key,
+	graph_id text not null references sgraphs.graphs(graph_id) on delete cascade,
 	element_type int not null references sgraphs.reftypes(reftype_id),
-	element_period bigint references sgraphs.periods(period_id),
-	last_update timestamp without time zone default now()::timestamp without time zone
+	element_period bigint references sgraphs.periods(period_id)
 );
 
 alter table sgraphs.elements owner to upa;
 
--- sgraphs.element_trait links an element and a trait 
+-- sgraphs.element_trait links an element and a trait. 
 create table sgraphs.element_trait (
 	element_id text references sgraphs.elements(element_id) on delete cascade,
-	trait_id bigint references sgraphs.traits(trait_id),
-	last_update timestamp without time zone default now()::timestamp without time zone
+	trait_id bigint references sgraphs.traits(trait_id)  on delete cascade
 );
 
 alter table sgraphs.element_trait owner to upa;
@@ -71,8 +91,7 @@ create table sgraphs.entity_attributes (
 	entity_id text references sgraphs.elements(element_id) on delete cascade,
 	attribute_name text not null, 
 	attribute_value text not null, 
-	period_id bigint references sgraphs.periods(period_id) on delete cascade,
-	last_update timestamp without time zone default now()::timestamp without time zone
+	period_id bigint references sgraphs.periods(period_id)
 );
 
 alter table sgraphs.entity_attributes owner to upa;
@@ -88,28 +107,29 @@ create table sgraphs.relation_role (
 
 alter table sgraphs.relation_role owner to upa;
 
--- sgraphs.layers defines a layer
-create table sgraphs.layers (
-	layer_id bigserial primary key, 
-	layer_name text not null,
-	layer_description text
+-------------------------------------
+-- INCLUSIONS AND NODES DEFINITION --
+-------------------------------------
+
+-- sgraphs.inclusions represent included graphs 
+create table sgraphs.inclusions (
+	source_id text references sgraphs.graphs(graph_id) on delete cascade,
+	child_id text references sgraphs.graphs(graph_id) on delete cascade
 );
 
-alter table sgraphs.layers owner to upa;
+alter table sgraphs.inclusions owner to upa;
 
--- sgraphs.layer_parent links a layer to its parents
-create table sgraphs.layer_parent (
-	layer_source bigint not null references sgraphs.layers(layer_id) on delete cascade,
-	layer_destination bigint not null references sgraphs.layers(layer_id) on delete cascade
+-- sgraphs.nodes define same nodes from a graph to another
+create table sgraphs.nodes (
+	source_element_id text not null references sgraphs.elements(element_id) on delete cascade,
+	child_element_id text not null references sgraphs.elements(element_id) on delete cascade
 );
 
-alter table sgraphs.layer_parent owner to upa;
+alter table sgraphs.nodes owner to upa;
 
--- sgraphs.layer_element links an element to a layer
-create table sgraphs.layer_element (
-	layer_id  bigint references sgraphs.layers(layer_id),
-	element_id text references sgraphs.elements(element_id),
-	element_primary_layer bool default false
-);
 
-alter table sgraphs.layer_element owner to upa;
+-------------------------------
+-- AND FINALLY, GRANT ACCESS --
+-------------------------------
+
+grant all privileges on all tables in schema sgraphs to upa;
