@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/zefrenchwan/patterns.git/nodes"
 )
@@ -33,6 +34,54 @@ func NewDao(ctx context.Context, url string) (Dao, error) {
 	}
 
 	return dao, nil
+}
+
+// CheckApiUser returns true if login and password match
+func (d *Dao) CheckApiUser(ctx context.Context, login, password string) (bool, error) {
+	if d == nil || d.pool == nil {
+		return false, errors.New("nil value")
+	}
+
+	var rows pgx.Rows
+	if r, err := d.pool.Query(ctx, "select susers.test_api_user_password($1, $2)", login, password); err != nil {
+		return false, err
+	} else {
+		rows = r
+	}
+
+	defer rows.Close()
+
+	rows.Next()
+	var result bool
+	if err := rows.Scan(&result); err != nil {
+		return false, err
+	}
+
+	return result, nil
+}
+
+// FindSecretForActiveUser returns the secret for an active user
+func (d *Dao) FindSecretForActiveUser(ctx context.Context, login string) (string, error) {
+	if d == nil || d.pool == nil {
+		return "", errors.New("nil value")
+	}
+
+	var rows pgx.Rows
+	if r, err := d.pool.Query(ctx, "select susers.find_secret_for_api_user($1)", login); err != nil {
+		return "", err
+	} else {
+		rows = r
+	}
+
+	defer rows.Close()
+
+	rows.Next()
+	var result string
+	if err := rows.Scan(&result); err != nil {
+		return result, err
+	}
+
+	return result, nil
 }
 
 // CreateGraph creates a new graph

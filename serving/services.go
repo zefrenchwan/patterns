@@ -20,6 +20,7 @@ func InitService(dao storage.Dao) *http.ServeMux {
 	// TODO: add in here your own handlers
 	// ADMIN PART
 	AddGetServiceHandlerToMux(mux, "/status/", checkStatusHandler, parameters)
+	AddPostServiceHandlerToMux(mux, "/token", checkAndGenerateToken, parameters)
 	// DATA MODIFICATION
 	AddPostServiceHandlerToMux(mux, "/graphs/new", createGraphHandler, parameters)
 	// END OF HANDLERS MODIFICATION
