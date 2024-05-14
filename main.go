@@ -17,7 +17,8 @@ func main() {
 		panic("Error: no database set")
 	}
 
-	dao, errDao := storage.NewDao(context.Background(), dburl)
+	currentContext := context.Background()
+	dao, errDao := storage.NewDao(currentContext, dburl)
 	if errDao != nil {
 		errorMessage := fmt.Sprintf("failed to build dao: %s", errDao.Error())
 		panic(errorMessage)
@@ -30,6 +31,6 @@ func main() {
 		panic(fmt.Errorf("invalid port %s : it should be a : and a valid number", servingPort))
 	}
 
-	mux := serving.InitService(dao)
+	mux := serving.InitService(dao, currentContext)
 	http.ListenAndServe(servingPort, mux)
 }

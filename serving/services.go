@@ -8,13 +8,16 @@ import (
 	"github.com/zefrenchwan/patterns.git/storage"
 )
 
+// RequestContextKey is key type for context keys when using specific info (such as current user)
+type RequestContextKey string
+
 // InitService returns a new valid servemux to launch
-func InitService(dao storage.Dao) *http.ServeMux {
+func InitService(dao storage.Dao, initialContext context.Context) *http.ServeMux {
 	mux := http.NewServeMux()
 
 	parameters := ServiceParameters{
 		Dao: dao,
-		Ctx: context.Background(),
+		Ctx: initialContext,
 	}
 
 	// TODO: add in here your own handlers
@@ -66,7 +69,7 @@ func AddServiceHandlerToMux(mux *http.ServeMux, method string, urlPattern string
 				http.Error(w, "should authenticate", http.StatusUnauthorized)
 				return
 			} else {
-				parameters.User = login
+				parameters.Ctx = context.WithValue(parameters.Ctx, RequestContextKey("user"), login)
 			}
 		}
 
@@ -83,9 +86,8 @@ func AddServiceHandlerToMux(mux *http.ServeMux, method string, urlPattern string
 
 // ServiceParameters contains all parameters to use for a service
 type ServiceParameters struct {
-	Dao  storage.Dao
-	Ctx  context.Context
-	User string
+	Dao storage.Dao
+	Ctx context.Context
 }
 
 // ServiceHandler adds more parameters than usual handler function

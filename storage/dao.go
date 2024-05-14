@@ -85,13 +85,13 @@ func (d *Dao) FindSecretForActiveUser(ctx context.Context, login string) (string
 }
 
 // CreateGraph creates a new graph
-func (d *Dao) CreateGraph(ctx context.Context, name, description string) (string, error) {
+func (d *Dao) CreateGraph(ctx context.Context, creator, name, description string) (string, error) {
 	if d == nil || d.pool == nil {
 		return "", errors.New("nil value")
 	}
 
 	newId := uuid.NewString()
-	if _, err := d.pool.Exec(ctx, "call sgraphs.create_graph($1,$2,$3)", newId, name, description); err != nil {
+	if _, err := d.pool.Exec(ctx, "call susers.secure_create_graph($1,$2,$3,$4)", creator, newId, name, description); err != nil {
 		return "", err
 	} else {
 		return newId, nil
