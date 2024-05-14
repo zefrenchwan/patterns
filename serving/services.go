@@ -20,9 +20,9 @@ func InitService(dao storage.Dao) *http.ServeMux {
 	// TODO: add in here your own handlers
 	// ADMIN PART
 	AddGetServiceHandlerToMux(mux, "/status/", checkStatusHandler, parameters)
-	AddPostServiceHandlerToMux(mux, "/token", checkAndGenerateToken, parameters)
+	AddPostServiceHandlerToMux(mux, "/token", checkUserAndGenerateTokenHandler, parameters)
 	// DATA MODIFICATION
-	AddPostServiceHandlerToMux(mux, "/graphs/new", createGraphHandler, parameters)
+	AddAuthenticatedPostServiceHandlerToMux(mux, "/graphs/new", createGraphHandler, parameters)
 	// END OF HANDLERS MODIFICATION
 
 	// mux is complete, all handlers are set
@@ -31,25 +31,51 @@ func InitService(dao storage.Dao) *http.ServeMux {
 
 // AddGetServiceHandlerToMux adds an handler to to the current mux for a GET
 func AddGetServiceHandlerToMux(mux *http.ServeMux, urlPattern string, handler ServiceHandler, parameters ServiceParameters) {
-	AddServiceHandlerToMux(mux, "GET", urlPattern, handler, parameters)
+	AddServiceHandlerToMux(mux, "GET", urlPattern, false, handler, parameters)
 }
 
 // AddPostServiceHandlerToMux adds an handler to to the current mux for a POST
 func AddPostServiceHandlerToMux(mux *http.ServeMux, urlPattern string, handler ServiceHandler, parameters ServiceParameters) {
-	AddServiceHandlerToMux(mux, "POST", urlPattern, handler, parameters)
+	AddServiceHandlerToMux(mux, "POST", urlPattern, false, handler, parameters)
+}
+
+// AddAuthenticatedGetServiceHandlerToMux adds an handler to to the current mux for a GET
+func AddAuthenticatedGetServiceHandlerToMux(mux *http.ServeMux, urlPattern string, handler ServiceHandler, parameters ServiceParameters) {
+	AddServiceHandlerToMux(mux, "GET", urlPattern, true, handler, parameters)
+}
+
+// AddAuthenticatedPostServiceHandlerToMux adds an handler to to the current mux for a POST
+func AddAuthenticatedPostServiceHandlerToMux(mux *http.ServeMux, urlPattern string, handler ServiceHandler, parameters ServiceParameters) {
+	AddServiceHandlerToMux(mux, "POST", urlPattern, true, handler, parameters)
 }
 
 // AddServiceHandlerToMux adds an handler to current mux
-func AddServiceHandlerToMux(mux *http.ServeMux, method string, urlPattern string, handler ServiceHandler, parameters ServiceParameters) {
+func AddServiceHandlerToMux(mux *http.ServeMux, method string, urlPattern string, testAuth bool, handler ServiceHandler, parameters ServiceParameters) {
 	mux.HandleFunc(urlPattern, func(w http.ResponseWriter, r *http.Request) {
 		if !strings.EqualFold(r.Method, method) {
-			http.Error(w, "Expecting "+method, 400)
-		} else if err := handler(parameters, w, r); err != nil {
+			http.Error(w, "Expecting "+method, http.StatusBadRequest)
+			return
+		}
+
+		// test if user is valid
+		if testAuth {
+			if login, auth, err := validateAuthentication(parameters, r); err != nil {
+				http.Error(w, err.Error(), http.StatusUnauthorized)
+				return
+			} else if !auth {
+				http.Error(w, "should authenticate", http.StatusUnauthorized)
+				return
+			} else {
+				parameters.User = login
+			}
+		}
+
+		if err := handler(parameters, w, r); err != nil {
 			switch customError, ok := err.(ServiceHttpError); ok {
 			case true:
 				http.Error(w, customError.Error(), customError.HttpCode())
 			default:
-				http.Error(w, "Internal error: "+err.Error(), 500)
+				http.Error(w, "Internal error: "+err.Error(), http.StatusInternalServerError)
 			}
 		}
 	})
@@ -57,8 +83,9 @@ func AddServiceHandlerToMux(mux *http.ServeMux, method string, urlPattern string
 
 // ServiceParameters contains all parameters to use for a service
 type ServiceParameters struct {
-	Dao storage.Dao
-	Ctx context.Context
+	Dao  storage.Dao
+	Ctx  context.Context
+	User string
 }
 
 // ServiceHandler adds more parameters than usual handler function

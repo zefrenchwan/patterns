@@ -4,27 +4,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
-	"time"
-
-	"github.com/golang-jwt/jwt/v5"
 )
-
-// Source for JWT implementation: https://medium.com/@cheickzida/golang-implementing-jwt-token-authentication-bba9bfd84d60
-
-// createToken builds a new token for a given login using its secret
-func createToken(userName string, userSecret string) (string, error) {
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256,
-		jwt.MapClaims{
-			"username": userName,
-			"exp":      time.Now().Add(time.Hour * 24).Unix(),
-		})
-
-	if token, err := token.SignedString([]byte(userSecret)); err != nil {
-		return "", err
-	} else {
-		return token, nil
-	}
-}
 
 // UserInformationInput is input for /token endpoint
 type UserInformationInput struct {
@@ -32,7 +12,8 @@ type UserInformationInput struct {
 	Password string `json:"password"`
 }
 
-func checkAndGenerateToken(wrapper ServiceParameters, w http.ResponseWriter, r *http.Request) error {
+// checkUserAndGenerateTokenHandler reads user data, and, if authentication matches, returns a token for this user
+func checkUserAndGenerateTokenHandler(wrapper ServiceParameters, w http.ResponseWriter, r *http.Request) error {
 	defer r.Body.Close()
 
 	var userInput UserInformationInput
