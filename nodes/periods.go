@@ -85,6 +85,7 @@ func (p *Period) IsFullPeriod() bool {
 	return p != nil && len(p.elements) == 1 && p.elements[0].IsFull()
 }
 
+// IsSameAs returns true if periods contains the same intervals
 func (p *Period) IsSameAs(other Period) bool {
 	if p == nil {
 		return false
@@ -284,6 +285,15 @@ func (p *Period) Complement() {
 	}
 
 	p.elements = result
+}
+
+// ContainingTimeInterval returns the smallest interval that contains the period
+func (p *Period) ContainingTimeInterval() Interval[time.Time] {
+	if p == nil || len(p.elements) == 0 {
+		return periodComparator.NewEmptyInterval()
+	}
+
+	return periodComparator.ContainingIntervalFor(p.elements)
 }
 
 // SerializePeriod returns the intervals as a string slice

@@ -569,6 +569,85 @@ func (t TypedComparator[T]) Remove(base Interval[T], elements ...Interval[T]) []
 	return result
 }
 
+// ContainingIntervalFor gets a list of intervals and returns the smallest interval that contains it all.
+// For no interval, or only empty intervals, it returns empty
+func (t TypedComparator[T]) ContainingIntervalFor(intervals []Interval[T]) Interval[T] {
+	var defaultValue T
+	if len(intervals) == 0 {
+		return t.NewEmptyInterval()
+	}
+
+	found := false
+	minInfinite, min, minIncluded := false, defaultValue, false
+	maxInfinite, max, maxIncluded := false, defaultValue, false
+
+	for _, interval := range intervals {
+		switch {
+		case interval.IsEmpty():
+			continue
+		case interval.IsFull():
+			return interval
+		case !found:
+			found = true
+			minInfinite := interval.minInfinite
+			if !minInfinite {
+				min = interval.min
+				minIncluded = interval.minIncluded
+			}
+
+			maxInfinite = interval.maxInfinite
+			if !maxInfinite {
+				max = interval.max
+				maxIncluded = interval.maxIncluded
+			}
+		default:
+			if !minInfinite && !interval.minInfinite {
+				comparison := t.comparator(min, interval.min)
+				switch {
+				case comparison > 0:
+					min = interval.min
+					minIncluded = interval.minIncluded
+				case comparison == 0:
+					minIncluded = interval.minIncluded || minIncluded
+				}
+			} else {
+				min = defaultValue
+				minIncluded = false
+				minInfinite = true
+			}
+
+			if !maxInfinite && !interval.maxInfinite {
+				comparison := t.comparator(max, interval.max)
+				switch {
+				case comparison < 0:
+					max = interval.max
+					maxIncluded = interval.maxIncluded
+				case comparison == 0:
+					maxIncluded = maxIncluded || interval.maxIncluded
+				}
+			} else {
+				maxInfinite = true
+				maxIncluded = false
+				max = defaultValue
+			}
+		}
+	}
+
+	if !found {
+		return t.NewEmptyInterval()
+	}
+
+	var result Interval[T]
+	result.empty = false
+	result.minInfinite = minInfinite
+	result.minIncluded = minIncluded
+	result.min = min
+	result.maxInfinite = maxInfinite
+	result.maxIncluded = maxIncluded
+	result.max = max
+	return result
+}
+
 // SerializeInterval returns empty for nil, the serialized interval with serializer to deal with T values
 func (i *Interval[T]) SerializeInterval(serializer func(T) string) string {
 	if i == nil || i.IsEmpty() {

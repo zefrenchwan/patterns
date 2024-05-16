@@ -170,5 +170,31 @@ func TestPeriodSerde(t *testing.T) {
 	} else if !reunion.IsSameAs(result) {
 		t.Error("serde failure, not same values")
 	}
+}
 
+func TestPeriodContainingInterval(t *testing.T) {
+	full := nodes.NewFullPeriod()
+	container := full.ContainingTimeInterval()
+	if !container.IsFull() {
+		t.Fail()
+	}
+
+	empty := nodes.NewEmptyPeriod()
+	container = empty.ContainingTimeInterval()
+	if !container.IsEmpty() {
+		t.Fail()
+	}
+
+	now := time.Now()
+	before := now.AddDate(-10, 0, 0)
+	after := now.AddDate(10, 0, 0)
+	otherInterval, _ := nodes.NewFiniteTimeInterval(now, after, false, true)
+	partial := nodes.NewPeriod(nodes.NewLeftInfiniteTimeInterval(before, false))
+	partial.AddInterval(otherInterval)
+	container = partial.ContainingTimeInterval()
+	expected := nodes.NewLeftInfiniteTimeInterval(after, true)
+	comparator := nodes.NewTimeComparator()
+	if comparator.CompareInterval(expected, container) != 0 {
+		t.Fail()
+	}
 }
