@@ -24,8 +24,6 @@ func InitService(dao storage.Dao, initialContext context.Context) *http.ServeMux
 	// ADMIN PART
 	AddGetServiceHandlerToMux(mux, "/status/", checkStatusHandler, parameters)
 	AddPostServiceHandlerToMux(mux, "/token", checkUserAndGenerateTokenHandler, parameters)
-	// DATA MODIFICATION
-	AddAuthenticatedPostServiceHandlerToMux(mux, "/graphs/new", createGraphHandler, parameters)
 	// END OF HANDLERS MODIFICATION
 
 	// mux is complete, all handlers are set

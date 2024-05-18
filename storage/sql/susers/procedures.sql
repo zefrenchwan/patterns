@@ -9,11 +9,10 @@ end; $$;
 
 alter function susers.generate_random_string owner to upa;
 
--- insert api user (not user, but api users)
-create or replace procedure susers.insert_api_user(
+-- insert user (to boostrap the system)
+create or replace procedure susers.insert_user(
     p_login text, 
-    p_pass text,
-    p_roles int[]
+    p_pass text
 ) language plpgsql as $$
 declare 
 	l_salt text; -- user specific salt
@@ -28,8 +27,8 @@ begin
 	select susers.generate_random_string() into l_salt;
 	select encode(sha256((p_pass || l_salt)::bytea), 'base64') into l_text_hash;
     -- insert value
-	insert into susers.api_users(apiuser_active, apiuser_login, apiuser_salt, apiuser_secret, apiuser_hash, apiuser_authorizations)
-	select true, p_login, l_salt, susers.generate_random_string(), l_text_hash, p_roles;
+	insert into susers.api_users(apiuser_active, apiuser_login, apiuser_salt, apiuser_secret, apiuser_hash)
+	select true, p_login, l_salt, susers.generate_random_string(), l_text_hash;
 end; $$;
 
 alter procedure susers.insert_api_user owner to upa;
@@ -79,47 +78,3 @@ begin
 end;$$;
 
 alter function susers.find_secret_for_api_user owner to upa;
-
--- test if a given user is active and has a given role 
-create or replace function susers.has_active_role(p_login text, p_role text) returns bool 
-language plpgsql as $$
-declare 
-	l_result bool := false;
-begin
-with user_roles_id as (
-	select unnest(apiuser_authorizations) as creation
-	from susers.api_users
-	where apiuser_login = p_login
-	and apiuser_active = true
-), user_roles as (
-	select ROL.role_name
-	from user_roles_id URID
-	join susers.roles ROL on ROL.role_id = URID.creation
-)
-select (count(*) >= 1) into l_result
-from user_roles
-where role_name = p_role;
-
-return l_result is not null and l_result;
-
-end;$$;
-
-alter function susers.has_active_role owner to upa;
-
--- susers.secure_create_graph creates a graph if user may do it
-create or replace procedure susers.secure_create_graph(p_user in text, p_id in text, p_name in text, p_description in text)
-language plpgsql as $$
-declare 
-	l_authorization bool := false;
-begin
-	select susers.has_active_role(p_user,'creator') into l_authorization;
-
-	if l_authorization is null or not l_authorization then
-		raise exception 'unauthorized user %', p_user;
-		return;
-	end if;
-
-	call sgraphs.create_graph(p_id, p_name, p_description);
-end; $$;
-
-alter procedure susers.secure_create_graph owner to upa;

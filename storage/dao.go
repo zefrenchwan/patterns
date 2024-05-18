@@ -7,7 +7,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/zefrenchwan/patterns.git/nodes"
@@ -84,20 +83,6 @@ func (d *Dao) FindSecretForActiveUser(ctx context.Context, login string) (string
 	return result, nil
 }
 
-// CreateGraph creates a new graph
-func (d *Dao) CreateGraph(ctx context.Context, creator, name, description string) (string, error) {
-	if d == nil || d.pool == nil {
-		return "", errors.New("nil value")
-	}
-
-	newId := uuid.NewString()
-	if _, err := d.pool.Exec(ctx, "call susers.secure_create_graph($1,$2,$3,$4)", creator, newId, name, description); err != nil {
-		return "", err
-	} else {
-		return newId, nil
-	}
-}
-
 // Close closes the dao and the underlying pool
 func (d *Dao) Close() {
 	if d != nil && d.pool != nil {
@@ -137,8 +122,8 @@ func serializeInterval(i nodes.Interval[time.Time]) string {
 }
 
 // deserializePeriod gets the values from the database and returns the matching period
-func deserializePeriod(full bool, value string) (nodes.Period, error) {
-	if full {
+func deserializePeriod(value string) (nodes.Period, error) {
+	if strings.Contains(value, "]-oo;+oo[") {
 		return nodes.NewFullPeriod(), nil
 	}
 
