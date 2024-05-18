@@ -1,17 +1,6 @@
--- to execute in patterns database (pdb)
--- In said database, schema sgraphs exists. 
-
-drop table if exists sgraphs.element_trait;
-drop table if exists sgraphs.relation_role;
-drop table if exists sgraphs.entity_attributes;
-drop table if exists sgraphs.elements;
-drop table if exists sgraphs.traits;
-drop table if exists sgraphs.reftypes;
-drop table if exists sgraphs.periods;
-drop table if exists sgraphs.inclusions;
-drop table if exists sgraphs.nodes;
-drop table if exists sgraphs.graphs;
-
+drop schema sgraphs cascade; 
+create schema sgraphs;
+alter schema sgraphs owner to upa;
 
 -------------------------------
 -- GRAPHS GENERAL DEFINITION --
@@ -101,8 +90,7 @@ create table sgraphs.relation_role (
 	relation_role_id bigserial primary key, 
 	relation_id text references sgraphs.elements(element_id) on delete cascade,
 	role_in_relation text not null, 
-	role_values text[],
-	last_update timestamp without time zone default now()::timestamp without time zone
+	role_values text[]
 );
 
 alter table sgraphs.relation_role owner to upa;
