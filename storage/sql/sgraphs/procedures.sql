@@ -168,3 +168,87 @@ begin
 		values (p_element_id, l_trait_id);
 	end loop;
 end; $$;
+
+-- sgraphs.upsert_attributes adds one attribute and all its values (and periods)
+create or replace procedure upsert_attributes(p_id text, p_name text, p_values text[], p_periods text[])
+language plpgsql as $$
+declare 
+	l_index int;
+	l_attribute_id text;
+	l_value text;
+	l_period_id bigint;
+	l_period text;
+	l_type int;
+begin 
+	if lenght(p_values) <> lenght(p_periods) then 
+		raise exception 'different sizes for periods and values';
+	end if;
+
+	if not exists (select 1 from sgraphs.elements where element_id) then 
+		raise exception 'no match for entity %', p_id;
+	end if;
+
+	delete from sgraphs.entity_attributes 
+	where entity_id = p_id;
+
+	select element_type into l_type
+	from sgraphs.elements 
+	where element_id = p_id;
+
+	if l_type is not null and element_type = 2 then 
+		update sgraphs.elements 
+		set element_type = 10 
+		where element_id = p_id;
+	end if;
+
+	l_index = 1; 
+	foreach l_value in array p_values loop 
+		l_period = p_periods[l_index];
+		call sgraphs.insert_period(l_period, l_period_id);
+
+		insert into sgraphs.entity_attributes(entity_id, attribute_name, attribute_value, period_id)
+		select p_id, p_name, l_value, l_period_id;
+
+		l_index = l_index + 1;
+	end loop;
+end; $$;
+
+alter procedure upsert_attributes owner to upa;
+
+-- sgraphs.upsert_links adds a role and its values to a relation
+create or replace procedure sgraphs.upsert_links(p_id text, p_role text, p_values text[])
+language plpgsql as $$
+declare 
+	l_element text;
+	l_type int;
+begin 
+
+	if not exists (select 1 from sgraphs.relation_role where element_id) then 
+		raise exception 'no match for relaton %', p_id;
+	end if;
+
+	foreach l_element in array p_values loop 
+		if not exists (select 1 from sgraphs.elements where element_id = p_id) then 
+			raise exception 'invalid argument in link: %', l_element;
+		end if;
+	end loop;
+
+	select element_type into l_type
+	from sgraphs.elements 
+	where element_id = p_id;
+
+	if l_type is not null and element_type = 1 then 
+		update sgraphs.elements 
+		set element_type = 10 
+		where element_id = p_id;
+	end if;
+
+	delete from sgraphs.relation_role 
+	where relation_id = p_id and role_in_relation = p_role;
+
+	insert into sgraphs.relation_role(relation_id, role_in_relation, role_values)
+	select p_id, p_role, p_values;
+
+end; $$;
+
+alter procedure sgraphs.upsert_links owner to upa;
