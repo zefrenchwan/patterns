@@ -6,24 +6,26 @@ import (
 	"strings"
 
 	"github.com/zefrenchwan/patterns.git/storage"
+	"go.uber.org/zap"
 )
 
 // RequestContextKey is key type for context keys when using specific info (such as current user)
 type RequestContextKey string
 
 // InitService returns a new valid servemux to launch
-func InitService(dao storage.Dao, initialContext context.Context) *http.ServeMux {
+func InitService(dao storage.Dao, initialContext context.Context, logger *zap.SugaredLogger) *http.ServeMux {
 	mux := http.NewServeMux()
 
 	parameters := ServiceParameters{
-		Dao: dao,
-		Ctx: initialContext,
+		Dao:    dao,
+		Ctx:    initialContext,
+		Logger: logger,
 	}
 
 	// TODO: add in here your own handlers
 	// ADMIN PART
 	AddGetServiceHandlerToMux(mux, "/status/", checkStatusHandler, parameters)
-	AddPostServiceHandlerToMux(mux, "/token", checkUserAndGenerateTokenHandler, parameters)
+	AddPostServiceHandlerToMux(mux, "/token/", checkUserAndGenerateTokenHandler, parameters)
 	// END OF HANDLERS MODIFICATION
 
 	// mux is complete, all handlers are set
@@ -84,8 +86,9 @@ func AddServiceHandlerToMux(mux *http.ServeMux, method string, urlPattern string
 
 // ServiceParameters contains all parameters to use for a service
 type ServiceParameters struct {
-	Dao storage.Dao
-	Ctx context.Context
+	Dao    storage.Dao
+	Ctx    context.Context
+	Logger *zap.SugaredLogger
 }
 
 // ServiceHandler adds more parameters than usual handler function

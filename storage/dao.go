@@ -35,14 +35,14 @@ func NewDao(ctx context.Context, url string) (Dao, error) {
 	return dao, nil
 }
 
-// CheckApiUser returns true if login and password match
-func (d *Dao) CheckApiUser(ctx context.Context, login, password string) (bool, error) {
+// CheckUser returns true if login and password match
+func (d *Dao) CheckUser(ctx context.Context, login, password string) (bool, error) {
 	if d == nil || d.pool == nil {
 		return false, errors.New("nil value")
 	}
 
 	var rows pgx.Rows
-	if r, err := d.pool.Query(ctx, "select susers.test_api_user_password($1, $2)", login, password); err != nil {
+	if r, err := d.pool.Query(ctx, "select susers.test_user_password($1, $2)", login, password); err != nil {
 		return false, err
 	} else {
 		rows = r
@@ -66,7 +66,7 @@ func (d *Dao) FindSecretForActiveUser(ctx context.Context, login string) (string
 	}
 
 	var rows pgx.Rows
-	if r, err := d.pool.Query(ctx, "select susers.find_secret_for_api_user($1)", login); err != nil {
+	if r, err := d.pool.Query(ctx, "select susers.find_secret_for_user($1)", login); err != nil {
 		return "", err
 	} else {
 		rows = r

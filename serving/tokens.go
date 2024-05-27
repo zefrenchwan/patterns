@@ -12,10 +12,11 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 )
 
+const TokenDuration = time.Hour * 24
+
 // TokenPayload to parse from the payload part of the token
-// (See )
 type TokenPayload struct {
-	ApiUser    string `json:"apiuser"`
+	User       string `json:"user"`
 	Expiration int64  `json:"expiration"`
 }
 
@@ -24,8 +25,8 @@ func createToken(userName string, userSecret string) (string, error) {
 	// Source for JWT implementation: https://medium.com/@cheickzida/golang-implementing-jwt-token-authentication-bba9bfd84d60
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256,
 		jwt.MapClaims{
-			"apiuser":    userName,
-			"expiration": time.Now().Add(time.Hour * 24).Unix(),
+			"user":       userName,
+			"expiration": time.Now().Add(TokenDuration).Unix(),
 		})
 
 	if token, err := token.SignedString([]byte(userSecret)); err != nil {
@@ -67,7 +68,7 @@ func validateAuthentication(wrapper ServiceParameters, r *http.Request) (string,
 		return "", false, err
 	}
 
-	login := payload.ApiUser
+	login := payload.User
 	var secret string
 	if s, err := wrapper.Dao.FindSecretForActiveUser(wrapper.Ctx, login); err != nil {
 		return "", false, err

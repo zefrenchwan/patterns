@@ -21,9 +21,7 @@ func checkUserAndGenerateTokenHandler(wrapper ServiceParameters, w http.Response
 		return NewServiceUnprocessableEntityError(errBody.Error())
 	} else if err := json.Unmarshal(body, &userInput); err != nil {
 		return NewServiceUnprocessableEntityError(err.Error())
-	}
-
-	if found, err := wrapper.Dao.CheckApiUser(wrapper.Ctx, userInput.Username, userInput.Password); err != nil {
+	} else if found, err := wrapper.Dao.CheckUser(wrapper.Ctx, userInput.Username, userInput.Password); err != nil {
 		return NewServiceInternalServerError(err.Error())
 	} else if !found {
 		return NewServiceForbiddenError("invalid user")
@@ -39,6 +37,7 @@ func checkUserAndGenerateTokenHandler(wrapper ServiceParameters, w http.Response
 		newToken = token
 	}
 
-	json.NewEncoder(w).Encode(newToken)
+	result := map[string]string{"token": newToken, "duration": TokenDuration.String()}
+	json.NewEncoder(w).Encode(result)
 	return nil
 }
