@@ -93,3 +93,13 @@ type ServiceParameters struct {
 
 // ServiceHandler adds more parameters than usual handler function
 type ServiceHandler func(wrapper ServiceParameters, w http.ResponseWriter, r *http.Request) error
+
+// CurrentUser returns the current user if any, and a boolean to explicit if found
+func (sp ServiceParameters) CurrentUser() (string, bool) {
+	switch userValue := sp.Ctx.Value(RequestContextKey("user")); userValue {
+	case nil:
+		return "", false
+	default:
+		return userValue.(string), true
+	}
+}

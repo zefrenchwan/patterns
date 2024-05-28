@@ -46,7 +46,20 @@ func NewGraph(name, description string) Graph {
 	}
 }
 
-// CreateNodeFrom adds the value
+// Owns returns true if this graph is the source for this element, false otherwise
+func (g *Graph) Owns(elementId string) bool {
+	if g == nil {
+		return false
+	} else if node, found := g.values[elementId]; !found {
+		return false
+	} else {
+		return node.sourceGraph == g.Id
+	}
+
+}
+
+// CreateNodeFrom adds the value in this graph from an existing one.
+// Typical use case is when a node comes from another graph (layer) but is changed to become a node in the new graph.
 func (g *Graph) CreateNodeFrom(newValue nodes.Element, source string) error {
 	if g == nil {
 		return nil
