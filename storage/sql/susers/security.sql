@@ -34,6 +34,7 @@ create table susers.classes (
 
 alter table susers.classes owner to upa;
 
+insert into susers.classes(class_name, class_description) values('user', 'users of the api');
 insert into susers.classes(class_name, class_description) values('graph', 'graph defines links between entities');
 
 -- susers.resources define concrete resources. 
@@ -58,11 +59,14 @@ create table susers.users (
 
 alter table susers.users owner to upa;
 
--- susers.authorizations define concrete access rights to ressources
+-- susers.authorizations define concrete access rights to ressources. 
+-- null in resource means that ALL resources are concerned. 
 create table susers.authorizations (
     auth_id bigserial primary key,
     auth_active bool default true,
-    auth_class_override int references susers.classes(class_id),
+    auth_user_id text not null references susers.users(user_id),
+    auth_role_id int not null references susers.roles(role_id),
+    auth_class_id int not null references susers.classes(class_id),
     auth_resource text references susers.resources(resource_id)
 );
 

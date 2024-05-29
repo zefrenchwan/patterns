@@ -60,3 +60,24 @@ The project contains:
 * **nodes** that defines the data model based on nodes in graphs
 * **storage** that contains the storage system
 * **serving** that contains the webapp part
+
+## Installation
+
+### Prerequisites
+
+* **Go** version 1.22 or higher
+* **Postgresql** installed and accessible
+
+### Procedure
+
+1. `go build` to build the application 
+2. launch scripts in `storage/sql`. Execute sql data definition then procedures creations
+3. launch go built application
+
+### Create first users
+
+Use procedures to insert users. 
+
+For instance (pay attention to password, change it): 
+* call susers.insert_user('root','password so secret that no one would find it');
+* call susers.insert_super_user_roles('root'); 
