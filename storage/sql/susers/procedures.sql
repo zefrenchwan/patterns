@@ -27,8 +27,8 @@ begin
 	select susers.generate_random_string() into l_salt;
 	select encode(sha256((p_pass || l_salt)::bytea), 'base64') into l_text_hash;
     -- insert value
-	insert into susers.users(user_active, user_login, user_salt, user_secret, user_hash)
-	select true, p_login, l_salt, susers.generate_random_string(), l_text_hash;
+	insert into susers.users(user_id, user_active, user_login, user_salt, user_secret, user_hash)
+	select gen_random_uuid(), true, p_login, l_salt, susers.generate_random_string(), l_text_hash;
 end; $$;
 
 alter procedure susers.insert_user owner to upa;
