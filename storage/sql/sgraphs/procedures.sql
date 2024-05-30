@@ -95,6 +95,30 @@ end; $$;
 
 alter procedure sgraphs.insert_period owner to upa;
 
+-- sgraphs.upsert_metadata_for_graph
+create or replace procedure sgraphs.upsert_metadata_for_graph(
+	p_graph_id in text, p_key in text, p_values in text[]
+) language plpgsql as $$
+declare 
+	l_key_id bigint;
+begin 
+	if not exists (select 1 from sgraphs.graphs where graph_id = p_graph_id) then 
+		raise exception 'no graph with provided id';
+	end if;
+
+	select entry_id into l_key_id 
+	from sgraphs.graph_entries
+	where graph_id = p_graph 
+	and entry_key = p_key;
+
+	if l_key_id is null then 
+		insert into sgraphs.graph_entries(graph_id, entry_key, entry_values) values (p_graph_id, p_key, p_values);
+	else
+		update sgraphs.graph_entries set entry_values = p_values;
+	end if;
+end;$$;
+
+alter procedure sgraphs.upsert_metadata_for_graph owner to upa;
 
 -- sgraphs.upsert_element_in_graph adds an element in a graph
 create or replace procedure sgraphs.upsert_element_in_graph(
@@ -112,7 +136,7 @@ declare
 	-- current trait in trait loop 
 	l_trait text;
 	-- current id of trait 
-	l_trait_id bigint;
+	l_trait_id text;
 begin
 	-- insert period, useful no matter what
 	call sgraphs.insert_period(p_activity, l_new_period);
@@ -159,8 +183,8 @@ begin
 		and trait = l_trait;
 		-- if not, insert it 
 		if l_trait_id is null then 
-			insert into sgraphs.traits(graph_id, trait_type, trait)
-			values (p_graph_id, p_element_type, l_trait)
+			insert into sgraphs.traits(trait_id, graph_id, trait_type, trait)
+			values (gen_random_uuid()::text, p_graph_id, p_element_type, l_trait)
 			returning trait_id into l_trait_id; 
 		end if;
 		-- then, link trait to element

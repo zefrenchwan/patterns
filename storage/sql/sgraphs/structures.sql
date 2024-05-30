@@ -15,6 +15,16 @@ create table sgraphs.graphs (
 
 alter table sgraphs.graphs owner to upa;
 
+-- sgrapghs.graph_entry contains a meta data entry for that graph (such as observer, source, etc)
+create table sgraphs.graph_entries (
+	entry_id bigserial primary key,
+	graph_id text references sgraphs.graphs(graph_id) on delete cascade,	
+	entry_key text not null, 
+	entry_values text[]
+);
+
+alter table sgraphs.graph_entries owner to upa;
+
 ------------------------------------------------------
 -- ELEMENTS DEFINITION: TRAITS, ENTITIES, RELATIONS --
 ------------------------------------------------------
@@ -48,7 +58,7 @@ alter table sgraphs.periods owner to upa;
 
 -- sgraphs.traits defines all possible traits
 create table sgraphs.traits (
-	trait_id bigserial primary key,
+	trait_id text not null primary key,
 	graph_id text not null references sgraphs.graphs(graph_id) on delete cascade,
 	trait_type int references sgraphs.reftypes(reftype_id),
 	trait text not null
@@ -69,7 +79,7 @@ alter table sgraphs.elements owner to upa;
 -- sgraphs.element_trait links an element and a trait. 
 create table sgraphs.element_trait (
 	element_id text references sgraphs.elements(element_id) on delete cascade,
-	trait_id bigint references sgraphs.traits(trait_id)  on delete cascade
+	trait_id text references sgraphs.traits(trait_id)  on delete cascade
 );
 
 alter table sgraphs.element_trait owner to upa;

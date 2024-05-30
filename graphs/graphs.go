@@ -28,6 +28,11 @@ type Graph struct {
 	Name string
 	// Description of the graph
 	Description string
+	// Metadata for graph contains any key values for that graph.
+	// If user needs a list, it is ready.
+	// If user needs key - value, convention is that first value in list is value.
+	// If key only matters (for a label), it is possible with values = nil
+	Metadata map[string][]string
 	// values are the nodes to display, key is the id of the element.
 	// Those values to display may come from the graph (owned) or from imported graphs
 	values map[string]Node
@@ -41,6 +46,7 @@ func NewGraph(name, description string) Graph {
 		Id:          uuid.NewString(),
 		Name:        name,
 		Description: description,
+		Metadata:    make(map[string][]string),
 		values:      make(map[string]Node),
 		dirtyNodes:  nil,
 	}
