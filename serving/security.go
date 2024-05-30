@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"strings"
 )
 
 // UserInformationInput is input for /token endpoint
@@ -40,4 +41,31 @@ func checkUserAndGenerateTokenHandler(wrapper ServiceParameters, w http.Response
 	result := map[string]string{"token": newToken, "duration": TokenDuration.String()}
 	json.NewEncoder(w).Encode(result)
 	return nil
+}
+
+func upsertUserHandler(wrapper ServiceParameters, w http.ResponseWriter, r *http.Request) error {
+	defer r.Body.Close()
+
+	currentUser, hasUser := wrapper.CurrentUser()
+	if !hasUser {
+		return NewServiceForbiddenError("need authentication")
+	}
+
+	var userInput UserInformationInput
+	if body, errBody := io.ReadAll(r.Body); errBody != nil {
+		return NewServiceUnprocessableEntityError(errBody.Error())
+	} else if err := json.Unmarshal(body, &userInput); err != nil {
+		return NewServiceUnprocessableEntityError(err.Error())
+	} else if err := wrapper.Dao.UpsertUser(wrapper.Ctx, currentUser, userInput.Username, userInput.Password); err == nil {
+		return nil
+	} else {
+		// No out parameter, so deal with error message
+		message := err.Error()
+		if strings.Contains(message, "unauthorized") {
+			return NewServiceForbiddenError(message)
+		}
+
+		return NewServiceInternalServerError(message)
+	}
+
 }

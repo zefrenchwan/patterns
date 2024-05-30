@@ -83,6 +83,16 @@ func (d *Dao) FindSecretForActiveUser(ctx context.Context, login string) (string
 	return result, nil
 }
 
+// UpsertUser changes user authentication if it exists, or insert user
+func (d *Dao) UpsertUser(ctx context.Context, creator, login, password string) error {
+	if d == nil || d.pool == nil {
+		return errors.New("nil value")
+	}
+
+	_, errExec := d.pool.Exec(ctx, "call susers.upsert_user($1,$2,$3)", creator, login, password)
+	return errExec
+}
+
 // Close closes the dao and the underlying pool
 func (d *Dao) Close() {
 	if d != nil && d.pool != nil {

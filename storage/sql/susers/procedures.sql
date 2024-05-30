@@ -165,10 +165,8 @@ end; $$;
 alter function susers.roles_for_resource owner to upa;
 
 -- susers.upsert_user changes password of an existing user, or creates user if possible. 
--- Result is out parameters: success and, if failure, if authorized.
 create or replace procedure susers.upsert_user(
-	p_creator in text, p_login in text, p_new_password in text, 
-	p_success out bool, p_authorized out bool) 
+	p_creator in text, p_login in text, p_new_password in text) 
 language plpgsql as $$
 declare 
 	-- id of the user, if any, to upsert password for
@@ -196,14 +194,8 @@ begin
 	end if;
 
 	if not l_authorized then 
-		p_success = false;
-		p_authorized = false;
-		return;
-	else
-		p_authorized = true;
+		raise exception '% unauthorized', p_creator;
 	end if;
-
-	p_success = false;
 
 	select susers.generate_random_string() into l_salt;
 	
@@ -219,9 +211,6 @@ begin
 		user_hash = l_text_hash
 		where user_id = l_user;
 	end if;	
-
-	p_success = true;
-
 end; $$;
 
 alter procedure susers.upsert_user owner to upa;
