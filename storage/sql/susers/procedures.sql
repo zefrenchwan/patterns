@@ -33,7 +33,7 @@ end; $$;
 
 alter procedure susers.insert_user owner to upa;
 
-
+-- susers.insert_super_user_roles uses an existing user and grants it all access 
 create or replace procedure susers.insert_super_user_roles(p_login text)
 language plpgsql as $$
 declare 
@@ -130,6 +130,7 @@ begin
 	join susers.users USR on USR.user_id = AUT.auth_user_id
 	join class_names CNA on CNA.class_id = AUT.auth_class_id
 	where AUT.auth_active
+	and USR.user_active
 	and USR.user_login = p_login;
 end; $$;
 
@@ -169,6 +170,8 @@ create or replace procedure susers.upsert_user(
 	p_creator in text, p_login in text, p_new_password in text) 
 language plpgsql as $$
 declare 
+	-- is creator user active
+	l_active bool;
 	-- id of the user, if any, to upsert password for
 	l_user text;
 	-- all access rights, if any, for p_creator
@@ -181,9 +184,23 @@ declare
 	l_text_hash text;
 begin 
 
+	-- creator has to be active. Otherwise raise exception  
+	select user_active into l_active
+	from susers.users 
+	where user_login = p_creator;
+
+	if l_active is null or not l_active then 
+		raise exception 'no access for %', p_creator;
+	end if;
+
+	-- find other user to act on
 	select user_id into l_user 
 	from susers.users 
 	where user_login = p_login;
+
+	if l_user is null then 
+		raise exception 'no user %', p_login;
+	end if;
 
 	select susers.roles_for_resource(p_creator, 'user', l_user) into l_access_rights;
 
@@ -214,3 +231,99 @@ begin
 end; $$;
 
 alter procedure susers.upsert_user owner to upa;
+
+-- susers.test_if_resource_exists returns true if resource exists by id for a given class, false otherwise
+create or replace function susers.test_if_resource_exists(p_class text, p_resource text) 
+returns bool language plpgsql as $$
+declare 
+	l_found bool;
+begin 
+	if p_class = 'user' then 
+		select true into l_found 
+		from sgraphs.users
+		where user_id = p_resource;
+	elsif p_class = 'graph' then 
+		select true into l_found 
+		from sgraphs.graphs 
+		where graph_id = p_resource;
+	else 
+		raise exception 'unexpected class %', p_class;
+	end if;
+
+	return l_found is not null and l_found = true;
+end; $$;
+
+alter function susers.test_if_resource_exists owner to upa;
+
+-- susers.add_auth_for_user_on_resource grants an user authorization. 
+-- There is NO parameter to define creator, has to be done before. 
+-- Note that p_resource set to null is not allowed, would be too risky.  
+create or replace procedure susers.add_auth_for_user_on_resource(
+	p_user_login text, p_auth text, p_class text, p_resource text
+) language plpgsql as $$
+declare 
+	l_found bool;
+	l_user_id text;
+	l_role_id int;
+	l_class_id int;
+begin 
+	select user_id into l_user_id
+	from susers.users 
+	where user_active and user_login = p_user_login;
+
+	if l_user_id is null then 
+		raise exception 'no active user %', p_user_login;
+	end if;
+	-- user exists and is active
+
+	select role_id into l_role_id
+	from susers.roles 
+	where role_name = p_auth;
+
+	if role_id is null then  
+		raise exception '% is not a valid role',  p_auth;
+	end if;
+	-- role exists
+
+	select class_id into l_class_id 
+	from susers.classes 
+	where class_name = p_class;
+
+	if class_id is null then 
+		raise exception '% is not a valid class', p_class;
+	end if;
+	-- class exists
+
+	if p_resource is not null then 
+		select susers.test_if_resource_exists(p_class, p_resource) into l_found;
+		if not l_found then 
+			raise exception 'non existing resource %', p_resource;
+		end if;
+	else
+		raise exception 'resource shoud not be null';
+	end if;
+	-- resource is valid for that class
+
+	-- THEN, test if previous authorizations were better than current one. 
+	-- If not, insert. 
+	if exists (
+		select 1 from susers.authorizations 
+		where auth_active and auth_user_id = l_user_id 
+		and auth_role = 'modifier' and auth_class_id = l_class_id
+		and auth_resource is null 
+	) then 
+		return;
+	end if;
+
+	if not exists (
+		select 1 from susers.authorizations 
+		where auth_active and auth_user_id = l_user_id 
+		and auth_role = 'modifier' and auth_class_id = l_class_id
+		and auth_resource = p_resource
+	) then 
+		insert into susers.authorizations (auth_active, auth_user_id, auth_role_id, auth_class_id, auth_resource)
+		select true, l_user_id, l_role_id, l_class_id, p_resource;
+	end if;
+end; $$;
+
+alter procedure susers.add_auth_for_user_on_resource owner to upa;

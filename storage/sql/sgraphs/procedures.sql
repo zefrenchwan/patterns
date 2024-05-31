@@ -8,6 +8,24 @@ end; $$;
 
 alter procedure sgraphs.create_graph owner to upa;
 
+create or replace procedure sgraphs.create_graph_from_imports(
+	p_id in text, p_name in text, p_description in text, p_sources in text[])
+language plpgsql as $$
+declare
+	l_current_graph text;
+begin 
+
+	insert into sgraphs.graphs(graph_id, graph_name, graph_description) values(p_id, p_name, p_description);
+
+	foreach l_current_graph in array p_sources loop
+		if not exists (select 1 from sgraphs.graphs where graph_id = l_current_graph) then 
+			raise exception 'no graph %', l_current_graph;
+		end if;
+
+		insert into sgraphs.inclusions(source_id, child_id) values (l_current_graph, p_id);
+	end loop;
+end; $$;
+
 -- sgraphs.insert_period inserts a new period and returns its new id via p_new_id
 create or replace procedure sgraphs.insert_period(p_activity in text, p_new_id out bigint)
 language plpgsql as $$
