@@ -99,7 +99,7 @@ begin
 	and user_active = true;
 	
 	if l_found is null or not l_found then 
-		raise exception 'no active user found for login %', p_login;
+		raise exception 'auth failure: no active user found for login %', p_login;
 	end if;
 
 	return l_secret;
@@ -190,7 +190,7 @@ begin
 	where user_login = p_creator;
 
 	if l_active is null or not l_active then 
-		raise exception 'no access for %', p_creator;
+		raise exception 'auth failure: no access for %', p_creator;
 	end if;
 
 	-- find other user to act on
@@ -199,7 +199,7 @@ begin
 	where user_login = p_login;
 
 	if l_user is null then 
-		raise exception 'no user %', p_login;
+		raise exception 'auth failure: no user %', p_login;
 	end if;
 
 	select susers.roles_for_resource(p_creator, 'user', l_user) into l_access_rights;
@@ -211,7 +211,7 @@ begin
 	end if;
 
 	if not l_authorized then 
-		raise exception '% unauthorized', p_creator;
+		raise exception 'auth failure: % unauthorized', p_creator;
 	end if;
 
 	select susers.generate_random_string() into l_salt;
@@ -272,7 +272,7 @@ begin
 	where user_active and user_login = p_user_login;
 
 	if l_user_id is null then 
-		raise exception 'no active user %', p_user_login;
+		raise exception 'auth failure: no active user %', p_user_login;
 	end if;
 	-- user exists and is active
 
@@ -280,7 +280,7 @@ begin
 	from susers.roles 
 	where role_name = p_auth;
 
-	if role_id is null then  
+	if l_role_id is null then  
 		raise exception '% is not a valid role',  p_auth;
 	end if;
 	-- role exists
@@ -289,7 +289,7 @@ begin
 	from susers.classes 
 	where class_name = p_class;
 
-	if class_id is null then 
+	if l_class_id is null then 
 		raise exception '% is not a valid class', p_class;
 	end if;
 	-- class exists
@@ -297,7 +297,7 @@ begin
 	if p_resource is not null then 
 		select susers.test_if_resource_exists(p_class, p_resource) into l_found;
 		if not l_found then 
-			raise exception 'non existing resource %', p_resource;
+			raise exception 'resource not found: non existing resource %', p_resource;
 		end if;
 	else
 		raise exception 'resource shoud not be null';
@@ -309,7 +309,7 @@ begin
 	if exists (
 		select 1 from susers.authorizations 
 		where auth_active and auth_user_id = l_user_id 
-		and auth_role = 'modifier' and auth_class_id = l_class_id
+		and auth_role_id = l_role_id and auth_class_id = l_class_id
 		and auth_resource is null 
 	) then 
 		return;
@@ -318,7 +318,7 @@ begin
 	if not exists (
 		select 1 from susers.authorizations 
 		where auth_active and auth_user_id = l_user_id 
-		and auth_role = 'modifier' and auth_class_id = l_class_id
+		and auth_role_id = l_role_id and auth_class_id = l_class_id
 		and auth_resource = p_resource
 	) then 
 		insert into susers.authorizations (auth_active, auth_user_id, auth_role_id, auth_class_id, auth_resource)

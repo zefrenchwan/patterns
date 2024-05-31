@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/zefrenchwan/patterns.git/nodes"
@@ -91,6 +92,28 @@ func (d *Dao) UpsertUser(ctx context.Context, creator, login, password string) e
 
 	_, errExec := d.pool.Exec(ctx, "call susers.upsert_user($1,$2,$3)", creator, login, password)
 	return errExec
+}
+
+// CreateGraph returns the id of built graph, or an error.
+func (d *Dao) CreateGraph(ctx context.Context, creator, name, description string, sources []string) (string, error) {
+	if d == nil || d.pool == nil {
+		return "", errors.New("nil value")
+	}
+
+	var errExec error
+	newId := uuid.NewString()
+	if len(sources) != 0 {
+		_, errExec = d.pool.Exec(ctx,
+			"call susers.create_graph_from_imports($1,$2,$3,$4,$5)",
+			creator, newId, name, description, sources)
+	} else {
+		_, errExec = d.pool.Exec(ctx,
+			"call susers.create_graph_from_scratch($1,$2,$3,$4)",
+			creator, newId, name, description,
+		)
+	}
+
+	return newId, errExec
 }
 
 // Close closes the dao and the underlying pool

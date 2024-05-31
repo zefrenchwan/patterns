@@ -42,6 +42,14 @@ func NewServiceUnprocessableEntityError(message string) ServiceHttpError {
 	}
 }
 
+// NewServiceNotFoundError returns a 404 error with a specific message
+func NewServiceNotFoundError(message string) ServiceHttpError {
+	return ServiceHttpError{
+		httpCode: http.StatusNotFound,
+		message:  message,
+	}
+}
+
 // NewServiceInternalServerError returns a 500 error with a specific message
 func NewServiceInternalServerError(message string) ServiceHttpError {
 	return ServiceHttpError{

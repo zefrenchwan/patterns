@@ -27,6 +27,8 @@ func InitService(dao storage.Dao, initialContext context.Context, logger *zap.Su
 	AddGetServiceHandlerToMux(mux, "/status/", checkStatusHandler, parameters)
 	AddPostServiceHandlerToMux(mux, "/token/", checkUserAndGenerateTokenHandler, parameters)
 	AddAuthenticatedPostServiceHandlerToMux(mux, "/user/upsert/", upsertUserHandler, parameters)
+	// GRAPHS OPERATIONS
+	AddAuthenticatedPostServiceHandlerToMux(mux, "/graph/create/", createGraphHandler, parameters)
 	// END OF HANDLERS MODIFICATION
 
 	// mux is complete, all handlers are set

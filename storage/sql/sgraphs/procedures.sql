@@ -2,8 +2,15 @@
 create or replace procedure sgraphs.create_graph(p_id in text, p_name in text, p_description in text)
 language plpgsql as $$
 declare 
+	l_description text;
 begin 
-	insert into sgraphs.graphs(graph_id, graph_name, graph_description) values(p_id, p_name, p_description);
+	if length(p_description) = 0 then 
+		select null into l_description;
+	else 
+		select p_description into l_description;
+	end if;
+
+	insert into sgraphs.graphs(graph_id, graph_name, graph_description) values(p_id, p_name, l_description);
 end; $$;
 
 alter procedure sgraphs.create_graph owner to upa;
@@ -13,9 +20,15 @@ create or replace procedure sgraphs.create_graph_from_imports(
 language plpgsql as $$
 declare
 	l_current_graph text;
+	l_description text;
 begin 
+	if length(p_description) = 0 then 
+		select null into l_description;
+	else 
+		select p_description into l_description;
+	end if;
 
-	insert into sgraphs.graphs(graph_id, graph_name, graph_description) values(p_id, p_name, p_description);
+	insert into sgraphs.graphs(graph_id, graph_name, graph_description) values(p_id, p_name, l_description);
 
 	foreach l_current_graph in array p_sources loop
 		if not exists (select 1 from sgraphs.graphs where graph_id = l_current_graph) then 

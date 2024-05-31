@@ -43,6 +43,8 @@ func checkUserAndGenerateTokenHandler(wrapper ServiceParameters, w http.Response
 	return nil
 }
 
+// upsertUserHandler creates an user with that info, or updates its secret and password.
+// It may apply to an user that wants to change its password.
 func upsertUserHandler(wrapper ServiceParameters, w http.ResponseWriter, r *http.Request) error {
 	defer r.Body.Close()
 
@@ -67,5 +69,4 @@ func upsertUserHandler(wrapper ServiceParameters, w http.ResponseWriter, r *http
 
 		return NewServiceInternalServerError(message)
 	}
-
 }
