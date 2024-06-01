@@ -327,3 +327,85 @@ begin
 end; $$;
 
 alter procedure susers.add_auth_for_user_on_resource owner to upa;
+
+-- susers.accept_any_user_access_to_resource_or_raise tests all security access and existence. 
+-- If all tests pass, it does nothing more. Otherwise, it raises an exception for the first failing test.
+create or replace procedure susers.accept_any_user_access_to_resource_or_raise(p_user_login text, p_class text, p_role_names text[], p_resource text) 
+language plpgsql as $$
+declare
+	l_resource text;
+	l_found bool;
+	l_user_id text;
+	l_role text;
+	l_role_id int;
+	l_class_id int;
+begin 
+	select user_id into l_user_id
+	from susers.users 
+	where user_active 
+	and user_login = p_user_login;
+
+	if l_user_id is null then 
+		raise exception 'auth failure: no active user %', p_user_login;
+	end if;
+	-- user exists and is active
+
+	select class_id into l_class_id 
+	from susers.classes 
+	where class_name = p_class;
+
+	if l_class_id is null then 
+		raise exception '% is not a valid class', p_class;
+	end if;
+	-- class exists
+
+	if p_resource is not null then 
+		select susers.test_if_resource_exists(p_class, p_resource) into l_found;
+		if not l_found then 
+			raise exception 'resource not found: non existing resource %', p_resource;
+		end if;
+		select p_resource into l_resource;
+	else
+		select null into l_resource;
+	end if;
+	-- resource is valid for that class
+
+	foreach l_role in array p_role_names loop 
+
+		select role_id into l_role_id
+		from susers.roles 
+		where role_name = l_role;
+
+		if l_role_id is null then  
+			raise exception '% is not a valid role',  p_auth;
+		end if;
+		-- role exists
+
+		if exists (
+			select 1 from susers.authorizations 
+			where auth_active and auth_user_id = l_user_id 
+			and auth_role_id = l_role_id and auth_class_id = l_class_id
+			and (
+				auth_resource is null 
+				or (l_resource is not null and auth_resource = l_resource))
+		) then 
+			return;
+		end if;
+
+		if l_resource is not null and exists (
+			select 1 from susers.authorizations 
+			where auth_active and auth_user_id = l_user_id 
+			and auth_role_id = l_role_id and auth_class_id = l_class_id
+			and auth_resource = l_resource
+		) then 
+			return;
+		end if;
+	end loop;
+
+	if array_length(p_role_names) > 0 then 
+		-- no match found and one was necessary
+		raise exception 'auth failure: unauthorized';
+	end if;
+end; $$;
+
+alter procedure susers.accept_any_user_access_to_resource_or_raise owner to upa;

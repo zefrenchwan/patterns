@@ -4,17 +4,16 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
-
-	"github.com/zefrenchwan/patterns.git/storage"
 )
 
-type GraphCreationInput struct {
+type GraphDataDTO struct {
 	Name        string              `json:"name"`
 	Description string              `json:"description,omitempty"`
 	Metadata    map[string][]string `json:"metadata,omitempty"`
 	Sources     []string            `json:"sources,omitempty"`
 }
 
+// createGraphHandler creates a graph: name, description, and metadata
 func createGraphHandler(wrapper ServiceParameters, w http.ResponseWriter, r *http.Request) error {
 	defer r.Body.Close()
 
@@ -23,7 +22,7 @@ func createGraphHandler(wrapper ServiceParameters, w http.ResponseWriter, r *htt
 		return NewServiceForbiddenError("should authenticate")
 	}
 
-	var input GraphCreationInput
+	var input GraphDataDTO
 	if body, err := io.ReadAll(r.Body); err != nil {
 		return NewServiceInternalServerError(err.Error())
 	} else if errM := json.Unmarshal(body, &input); errM != nil {
@@ -33,18 +32,18 @@ func createGraphHandler(wrapper ServiceParameters, w http.ResponseWriter, r *htt
 	}
 
 	newId, errCreate := wrapper.Dao.CreateGraph(wrapper.Ctx, user, input.Name, input.Description, input.Sources)
-	if errCreate == nil {
+	if errCreate != nil {
+		return BuildApiErrorFromStorageError(errCreate)
+	} else if len(input.Metadata) == 0 {
 		json.NewEncoder(w).Encode(newId)
 		return nil
 	}
 
-	message := errCreate.Error()
-	switch {
-	case storage.IsAuthErrorMessage(message):
-		return NewServiceForbiddenError(message)
-	case storage.IsResourceNotFoundMessage(message):
-		return NewServiceNotFoundError(message)
-	default:
-		return NewServiceInternalServerError(message)
+	errUpdate := wrapper.Dao.UpsertMetadataForGraph(wrapper.Ctx, user, newId, input.Metadata)
+	if errUpdate != nil {
+		return BuildApiErrorFromStorageError(errUpdate)
 	}
+
+	json.NewEncoder(w).Encode(newId)
+	return nil
 }

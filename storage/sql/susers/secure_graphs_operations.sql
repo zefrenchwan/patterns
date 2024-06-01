@@ -14,12 +14,7 @@ begin
         raise exception 'graph already exists';
     end if;
 
-    select susers.roles_for_resource(p_user,'graph',null) into l_global_auth;
-    select 'creator' = ANY(l_global_auth) into l_auth;
-    if not l_auth then 
-        raise exception 'auth failure: unauthorization to create graphs';
-    end if;
-    
+    call susers.accept_any_user_access_to_resource_or_raise(p_user, 'graph', array['creator'], null);
     -- create graph
     call sgraphs.create_graph(p_new_id, p_name, p_description);
     -- grant graph access
@@ -48,13 +43,7 @@ begin
     end if;
 
     -- Security operations:
-    -- 1. test if user may create graphs. 
-    -- 2. test if user has access to the imported graphs
-    select susers.roles_for_resource(p_user,'graph',null) into l_global_auth;
-    select 'creator' = ANY(l_global_auth) into l_auth;
-    if not l_auth then 
-        raise exception 'auth failure: unauthorization to create graphs';
-    end if;
+    call susers.accept_any_user_access_to_resource_or_raise(p_user, 'graph', array['creator'], null);
     -- test if graph exists and if user may see it
     foreach l_current_graph in array p_imported_graphs loop 
         if not exists (
@@ -63,13 +52,7 @@ begin
             raise exception 'graph % does not exist', l_current_graph;
         end if;
 
-        select ('modifier' = ANY(susers.roles_for_resource(p_user,'graph', l_current_graph)) 
-            or 'observer' = ANY(susers.roles_for_resource(p_user,'graph', l_current_graph))) 
-        into l_auth;
-
-        if not l_auth then 
-            raise exception 'auth failure: unauthorized to use graph %', l_current_graph;
-        end if;
+        call susers.accept_any_user_access_to_resource_or_raise(p_user, 'graph', array['modifier', 'observer'], l_current_graph);
     end loop;
 
     -- create graph
@@ -82,3 +65,24 @@ begin
 end; $$;
 
 alter procedure susers.create_graph_from_imports owner to upa;
+
+create or replace procedure susers.clear_graph_metadata(p_actor text, p_graph_id text)
+language plpgsql as $$
+declare 
+
+begin 
+    call susers.accept_any_user_access_to_resource_or_raise(p_actor, 'graph', array['modifier'], p_graph_id);
+    call sgraphs.clear_graph_metadata(p_graph_id);
+end; $$;
+
+alter procedure susers.clear_graph_metadata owner to upa;
+
+create or replace procedure susers.upsert_graph_metadata_entry(p_actor text, p_graph_id text, p_key text, p_values text[]) 
+language plpgsql as $$
+declare 
+begin 
+    call susers.accept_any_user_access_to_resource_or_raise(p_actor, 'graph', array['modifier'], p_graph_id);
+    call sgraphs.upsert_graph_metadata_entry(p_graph_id, p_key, p_values);
+end; $$;
+
+alter procedure susers.upsert_graph_metadata_entry owner to upa;

@@ -1,6 +1,10 @@
 package serving
 
-import "net/http"
+import (
+	"net/http"
+
+	"github.com/zefrenchwan/patterns.git/storage"
+)
 
 // ServiceHttpError is a custom error with an http code to return
 type ServiceHttpError struct {
@@ -16,6 +20,22 @@ func (e ServiceHttpError) Error() string {
 // HttpCode returns http code for response
 func (e ServiceHttpError) HttpCode() int {
 	return e.httpCode
+}
+
+func BuildApiErrorFromStorageError(sourceError error) error {
+	if sourceError == nil {
+		return sourceError
+	}
+
+	message := sourceError.Error()
+	switch {
+	case storage.IsAuthErrorMessage(message):
+		return NewServiceForbiddenError(message)
+	case storage.IsResourceNotFoundMessage(message):
+		return NewServiceNotFoundError(message)
+	default:
+		return NewServiceInternalServerError(message)
+	}
 }
 
 // NewServiceHttpClientError returns a 400 error with a specific message

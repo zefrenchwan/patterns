@@ -39,6 +39,28 @@ begin
 	end loop;
 end; $$;
 
+-- sgraphs.clear_graph_metadata deletes all entries for this graph
+create or replace procedure sgraphs.clear_graph_metadata(p_graph_id text)
+language plpgsql as $$
+declare 
+begin 
+	delete from sgraphs.graph_entries where graph_id = p_graph_id;
+end; $$;
+
+alter procedure sgraphs.clear_graph_metadata owner to upa;
+
+-- sgraphs.upsert_graph_metadata_entry sets values for a given entry
+create or replace procedure sgraphs.upsert_graph_metadata_entry(p_graph_id text, p_key text, p_values text[]) 
+language plpgsql as $$
+declare 
+begin
+	delete from sgraphs.graph_entries where graph_id = p_graph_id and entry_key = p_key;
+	insert into sgraphs.graph_entries(graph_id, entry_key, entry_values) values (p_graph_id, p_key, p_values);
+end; $$;
+
+alter procedure sgraphs.upsert_graph_metadata_entry owner to upa;
+
+
 -- sgraphs.insert_period inserts a new period and returns its new id via p_new_id
 create or replace procedure sgraphs.insert_period(p_activity in text, p_new_id out bigint)
 language plpgsql as $$

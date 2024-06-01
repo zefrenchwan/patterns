@@ -116,6 +116,27 @@ func (d *Dao) CreateGraph(ctx context.Context, creator, name, description string
 	return newId, errExec
 }
 
+// UpsertMetadataForGraph clears metadata and forces new values
+func (d *Dao) UpsertMetadataForGraph(ctx context.Context, creator string, graphId string, metadata map[string][]string) error {
+	if d == nil || d.pool == nil {
+		return errors.New("nil value")
+	}
+
+	_, errExec := d.pool.Exec(ctx, "call susers.clear_graph_metadata($1, $2)", creator, graphId)
+	if errExec != nil || len(metadata) == 0 {
+		return errExec
+	}
+
+	for key, values := range metadata {
+		_, errExec := d.pool.Exec(ctx, "call susers.upsert_graph_metadata_entry($1, $2, $3, $4)", creator, graphId, key, values)
+		if errExec != nil || len(metadata) == 0 {
+			return errExec
+		}
+	}
+
+	return nil
+}
+
 // Close closes the dao and the underlying pool
 func (d *Dao) Close() {
 	if d != nil && d.pool != nil {
