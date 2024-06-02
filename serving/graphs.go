@@ -47,3 +47,21 @@ func createGraphHandler(wrapper ServiceParameters, w http.ResponseWriter, r *htt
 	json.NewEncoder(w).Encode(newId)
 	return nil
 }
+
+// listGraphHandler displays graphs available to an user
+func listGraphHandler(wrapper ServiceParameters, w http.ResponseWriter, r *http.Request) error {
+	defer r.Body.Close()
+
+	user, auth := wrapper.CurrentUser()
+	if !auth {
+		return NewServiceForbiddenError("should authenticate")
+	}
+
+	availableGraphs, errLoad := wrapper.Dao.ListGraphsForUser(wrapper.Ctx, user)
+	if errLoad != nil {
+		return NewServiceInternalServerError(errLoad.Error())
+	}
+
+	json.NewEncoder(w).Encode(availableGraphs)
+	return nil
+}

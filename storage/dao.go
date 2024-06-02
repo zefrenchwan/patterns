@@ -137,6 +137,73 @@ func (d *Dao) UpsertMetadataForGraph(ctx context.Context, creator string, graphI
 	return nil
 }
 
+// ListGraphsForUser returns the graphs an user has access to
+func (d *Dao) ListGraphsForUser(ctx context.Context, user string) ([]GraphsForUserDTO, error) {
+	var result []GraphsForUserDTO
+	if d == nil || d.pool == nil {
+		return result, errors.New("nil value")
+	}
+
+	rows, errLoad := d.pool.Query(ctx, "select * from susers.list_graphs_for_user($1) order by graph_id asc", user)
+	if errLoad != nil {
+		return result, errLoad
+	}
+
+	defer rows.Close()
+	var currentData GraphsForUserDTO
+	inserted := false
+	var globalErr error
+
+	for rows.Next() {
+		inserted = false
+		// expecting
+		//  graph_id text, graph_roles text[],
+		// graph_name text, graph_description text,
+		// graph_md_key text, graph_md_values text[]
+		var rawData []any
+		if raw, err := rows.Values(); err != nil {
+			globalErr = errors.Join(globalErr, err)
+		} else {
+			rawData = raw
+		}
+
+		graphId := rawData[0].(string)
+		if currentData.Id != "" && graphId != currentData.Id {
+			result = append(result, currentData)
+			currentData = GraphsForUserDTO{}
+			inserted = true
+		}
+
+		currentData.Id = graphId
+		currentData.Name = rawData[2].(string)
+		currentData.Roles = mapAnyToStringSlice(rawData[1])
+		if rawData[3] != nil {
+			currentData.Description = rawData[3].(string)
+		}
+
+		if rawData[4] == nil {
+			continue
+		} else if currentData.Metadata == nil {
+			currentData.Metadata = make(map[string][]string)
+		}
+
+		key := rawData[4].(string)
+		currentData.Metadata[key] = nil
+
+		if rawData[5] == nil {
+			continue
+		}
+
+		currentData.Metadata[key] = mapAnyToStringSlice(rawData[5])
+	}
+
+	if currentData.Id != "" && !inserted {
+		result = append(result, currentData)
+	}
+
+	return result, globalErr
+}
+
 // Close closes the dao and the underlying pool
 func (d *Dao) Close() {
 	if d != nil && d.pool != nil {
@@ -188,4 +255,27 @@ func deserializePeriod(value string) (nodes.Period, error) {
 // isEntityFromRefType returns true if value matches either entity or mixed
 func isEntityFromRefType(value int) bool {
 	return value == 1 || value == 10
+}
+
+// mapAnySliceToStringSlice gets a slice of values and maps it to a string slice
+func mapAnyToStringSlice(values any) []string {
+	var result []string
+	if values == nil {
+		return result
+	}
+
+	rawValues := values.([]any)
+	if len(rawValues) == 0 {
+		return result
+	}
+
+	for _, value := range rawValues {
+		if value == nil {
+			continue
+		}
+
+		result = append(result, value.(string))
+	}
+
+	return result
 }

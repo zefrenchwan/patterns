@@ -12,6 +12,15 @@ const (
 	DATE_SERDE_FORMAT = "2006-01-02T15:04:05"
 )
 
+// GraphsForUserDTO contains graphs an user has access to
+type GraphsForUserDTO struct {
+	Id          string              `json:"id"`
+	Name        string              `json:"name"`
+	Roles       []string            `json:"roles"`
+	Description string              `json:"description"`
+	Metadata    map[string][]string `json:"metadata"`
+}
+
 // EntityTraitsDTO is a dto to deal with just entity ids and related traits
 type EntityTraitsDTO struct {
 	// Id of the entity

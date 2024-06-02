@@ -87,7 +87,7 @@ end; $$;
 
 alter procedure susers.upsert_graph_metadata_entry owner to upa;
 
--- susers.list_graphs_for_user returns the graph data an user may use with provided roles
+-- susers.list_graphs_for_user returns the graph data an user may use with user's roles
 create or replace function susers.list_graphs_for_user(p_user text) 
 returns table (
     graph_id text, graph_roles text[],
