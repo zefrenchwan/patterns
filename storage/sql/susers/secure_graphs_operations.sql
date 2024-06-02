@@ -14,7 +14,7 @@ begin
         raise exception 'graph already exists';
     end if;
 
-    call susers.accept_any_user_access_to_resource_or_raise(p_user, 'graph', array['creator'], null);
+    call susers.accept_any_user_access_to_resource_or_raise(p_user, 'graph', array['manager'], null);
     -- create graph
     call sgraphs.create_graph(p_new_id, p_name, p_description);
     -- grant graph access
@@ -43,7 +43,7 @@ begin
     end if;
 
     -- Security operations:
-    call susers.accept_any_user_access_to_resource_or_raise(p_user, 'graph', array['creator'], null);
+    call susers.accept_any_user_access_to_resource_or_raise(p_user, 'graph', array['manager'], null);
     -- test if graph exists and if user may see it
     foreach l_current_graph in array p_imported_graphs loop 
         if not exists (

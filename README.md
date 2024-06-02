@@ -46,11 +46,6 @@ A trait is not a simple label to put on elements.
 ## Architecture
 
 This project is a webapp not following REST standard. 
-It allows:
-* to store data using **/upsert/elements/** endpoints
-* to retrieve data depending on time using **/snapshot/entities/** family of endpoints
-* to search data in general using **/search**
-* to load data using **/load/elements/** endpoints
 
 Linked project [bootstrapper](https://github.com/zefrenchwan/bootstrapper) allows to init the first values to store and build relations with. 
 

@@ -14,7 +14,7 @@ alter table susers.roles owner to upa;
 
 -- insert key roles 
 insert into susers.roles(role_name, role_description) 
-values ('creator', 'creates objects');
+values ('manager', 'creates or deletes objects');
 insert into susers.roles(role_name, role_description) 
 values ('modifier', 'modifies objects');
 insert into susers.roles(role_name, role_description) 
