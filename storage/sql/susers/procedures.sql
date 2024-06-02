@@ -409,3 +409,57 @@ begin
 end; $$;
 
 alter procedure susers.accept_any_user_access_to_resource_or_raise owner to upa;
+
+-- susers.list_authorized_graphs_for_any_roles finds graphs an user may access for given roles
+create or replace function susers.list_authorized_graphs_for_any_roles(p_user_login text, p_roles text[]) 
+returns table(graph_id text, role_names text[]) language plpgsql as $$
+declare 
+	l_user_id text;
+	l_class_id int;
+	l_matching_roles int[];
+	l_role text;
+begin 
+	select USR.user_id into l_user_id
+	from susers.users USR
+	where USR.user_login = p_user_login
+	and USR.user_active = true;
+
+	select array_agg(ROL.role_id) into l_matching_roles
+	from susers.roles ROL 
+	where ROL.role_name = ANY(p_roles);
+
+	select CLA.class_id into l_class_id 
+	from susers.classes CLA 
+	where CLA.class_name = 'graph';
+	
+	if l_class_id is null then 
+		raise exception 'invalid class provided';
+	end if;
+
+	return query 
+	with roles_resources as (
+		select AUT.auth_resource as graph_id, ROL.role_name
+		from susers.authorizations AUT
+		join susers.roles ROL on AUT.auth_role_id = ROL.role_id
+		where l_user_id is not null 
+		and AUT.auth_user_id = l_user_id
+		and AUT.auth_active = true
+		and AUT.auth_role_id = ANY(l_matching_roles)
+		and AUT.auth_class_id = l_class_id
+		and AUT.auth_resource is null
+	), roles_graphs as (
+		select GRA.graph_id, ROR.role_name
+		from sgraphs.graphs GRA 
+		join roles_resources ROR on ROR.graph_id = GRA.graph_id
+		UNION 
+		select GRA.graph_id, ROR.role_name
+		from roles_resources ROR
+		cross join sgraphs.graphs GRA
+		where ROR.graph_id is null 
+	) 
+	select distinct ROG.graph_id, array_agg(ROG.role_name) as role_names
+	from roles_graphs ROG
+	group by ROG.graph_id;
+end;$$;
+
+alter function susers.list_authorized_graphs_for_any_roles owner to upa;

@@ -86,3 +86,29 @@ begin
 end; $$;
 
 alter procedure susers.upsert_graph_metadata_entry owner to upa;
+
+-- susers.list_graphs_for_user returns the graph data an user may use with provided roles
+create or replace function susers.list_graphs_for_user(p_user text) 
+returns table (
+    graph_id text, graph_roles text[],
+    graph_name text, graph_description text, 
+    graph_md_key text, graph_md_values text[]
+) language plpgsql as $$
+declare 
+    l_roles text[];
+begin
+
+   select array_agg(role_name) into l_roles
+    from susers.roles;
+
+    return query
+    select 
+    GRA.graph_id, GRO.role_names as graph_roles,
+    GRA.graph_name, GRA.graph_description,
+    ENT.entry_key as graph_md_key, ENT.entry_values as graph_md_values
+    from sgraphs.graphs GRA
+    join susers.list_authorized_graphs_for_any_roles(p_user, l_roles) GRO ON GRO.graph_id = GRA.graph_id
+    left outer join sgraphs.graph_entries ENT on ENT.graph_id = GRA.graph_id;
+end; $$;
+
+alter function susers.list_graphs_for_user owner to upa;
