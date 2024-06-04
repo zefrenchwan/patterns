@@ -329,3 +329,37 @@ begin
 end; $$;
 
 alter procedure sgraphs.upsert_links owner to upa;
+
+-- sgraphs.load_graph_metadata returns the name, description and associated map of a graph
+create or replace function sgraphs.load_graph_metadata(p_id text)
+returns table (graph_name text, graph_description name, entry_key text, entry_values text[])
+language plpgsql as $$
+declare 
+begin 
+	return query 
+	select 
+	GRA.graph_name, GRA.graph_description, 
+	GEN.entry_key, GEN.entry_values
+	from sgraphs.graphs GRA
+	left outer join sgraphs.graph_entries GEN on GEN.graph_id = GRA.graph_id
+	where GRA.graph_id = p_id;
+end; $$;
+
+alter function sgraphs.load_graph_metadata owner to upa;
+
+
+-- sgraphs.serialize_period returns the value as a text
+create or replace function sgraphs.serialize_period(p_full bool, p_empty bool, p_value text) returns text 
+language plpgsql as $$
+declare 
+begin 
+	if p_full then 
+		return ']-oo;+oo[';
+	elsif p_empty then 
+		return '];[';
+	else 
+		return p_value;
+	end if;
+end; $$;
+
+alter function sgraphs.serialize_period owner to upa;

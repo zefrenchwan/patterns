@@ -14,15 +14,13 @@ alter table susers.roles owner to upa;
 
 -- insert key roles 
 insert into susers.roles(role_name, role_description) 
-values ('manager', 'creates or deletes objects');
+values ('manager', 'creates or deletes resources');
 insert into susers.roles(role_name, role_description) 
-values ('modifier', 'modifies objects');
+values ('modifier', 'modifies resources');
 insert into susers.roles(role_name, role_description) 
-values ('observer', 'sees objects');
+values ('observer', 'sees resources');
 insert into susers.roles(role_name, role_description) 
 values ('granter', 'allows other users to have same authorizations on objects');
-insert into susers.roles(role_name, role_description) 
-values ('supervisor', 'allows to manage users');
 
 
 -- susers.classes define objects that embed security to check

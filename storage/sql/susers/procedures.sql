@@ -204,7 +204,7 @@ begin
 
 	select susers.roles_for_resource(p_creator, 'user', l_user) into l_access_rights;
 
-	select 'supervisor' = ANY(susers.roles_for_resource(p_creator,'user',l_user)) into l_authorized;
+	select 'manager' = ANY(susers.roles_for_resource(p_creator,'user',l_user)) into l_authorized;
 
 	if p_creator = p_login and not l_authorized then 
 		select 'modifier' = ANY(susers.roles_for_resource(p_creator,'user',l_user)) into l_authorized;

@@ -18,6 +18,8 @@ type Node struct {
 	sourceGraph string
 	// value is the actual displayed value
 	value nodes.Element
+	// editable is true if current user may modify the node
+	editable bool
 }
 
 // Graph defines a graph
@@ -61,7 +63,6 @@ func (g *Graph) Owns(elementId string) bool {
 	} else {
 		return node.sourceGraph == g.Id
 	}
-
 }
 
 // CreateNodeFrom adds the value in this graph from an existing one.
