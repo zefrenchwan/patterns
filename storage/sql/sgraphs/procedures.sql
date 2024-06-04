@@ -247,7 +247,7 @@ begin
 end; $$;
 
 -- sgraphs.upsert_attributes adds one attribute and all its values (and periods)
-create or replace procedure upsert_attributes(p_id text, p_name text, p_values text[], p_periods text[])
+create or replace procedure sgraphs.upsert_attributes(p_id text, p_name text, p_values text[], p_periods text[])
 language plpgsql as $$
 declare 
 	l_index int;
@@ -257,11 +257,11 @@ declare
 	l_period text;
 	l_type int;
 begin 
-	if lenght(p_values) <> lenght(p_periods) then 
+	if array_length(p_values, 1) <> array_length(p_periods, 1) then 
 		raise exception 'different sizes for periods and values';
 	end if;
 
-	if not exists (select 1 from sgraphs.elements where element_id) then 
+	if not exists (select 1 from sgraphs.elements where element_id = p_id) then 
 		raise exception 'no match for entity %', p_id;
 	end if;
 
@@ -272,7 +272,7 @@ begin
 	from sgraphs.elements 
 	where element_id = p_id;
 
-	if l_type is not null and element_type = 2 then 
+	if l_type is not null and l_type = 2 then 
 		update sgraphs.elements 
 		set element_type = 10 
 		where element_id = p_id;
@@ -290,7 +290,7 @@ begin
 	end loop;
 end; $$;
 
-alter procedure upsert_attributes owner to upa;
+alter procedure sgraphs.upsert_attributes owner to upa;
 
 -- sgraphs.upsert_links adds a role and its values to a relation
 create or replace procedure sgraphs.upsert_links(p_id text, p_role text, p_values text[])

@@ -204,6 +204,78 @@ func (d *Dao) ListGraphsForUser(ctx context.Context, user string) ([]GraphsForUs
 	return result, globalErr
 }
 
+// UpsertElement adds an element to a given graph
+func (d *Dao) UpsertElement(ctx context.Context, user string, graphId string, element nodes.Element) error {
+	if d == nil || d.pool == nil {
+		return errors.New("nil value")
+	} else if element == nil {
+		return nil
+	}
+
+	var elementType int
+	var entity nodes.FormalInstance
+	var relation nodes.FormalRelation
+	switch newEntity, matchEntity := element.(nodes.FormalInstance); matchEntity {
+	case true:
+		elementType = 1
+		entity = newEntity
+	case false:
+		elementType = 2
+		relation = element.(nodes.FormalRelation)
+	}
+
+	_, errUpsertElement := d.pool.Exec(ctx,
+		"call susers.upsert_element_in_graph($1, $2, $3, $4, $5, $6)",
+		user, graphId, element.Id(), elementType,
+		serializePeriod(element.ActivePeriod()),
+		element.Traits(),
+	)
+
+	if errUpsertElement != nil {
+		return errUpsertElement
+	}
+
+	var globalErr error
+	if entity != nil {
+		attributes := entity.Attributes()
+		for _, attr := range attributes {
+			values, errLoad := entity.PeriodValuesForAttribute(attr)
+			if errLoad != nil {
+				globalErr = errors.Join(globalErr, errLoad)
+			}
+
+			size := len(values)
+			if size == 0 {
+				continue
+			}
+
+			mappedValues := make([]string, size)
+			mappedPeriods := make([]string, size)
+			index := 0
+			for value, period := range values {
+				mappedValues[index] = value
+				mappedPeriods[index] = serializePeriod(period)
+			}
+
+			//susers.upsert_attributes(p_user_login text, p_id text, p_name text, p_values text[], p_periods text[])
+			_, errAttr := d.pool.Exec(ctx,
+				"call susers.upsert_attributes($1, $2, $3, $4, $5)",
+				user, entity.Id(), attr, mappedValues, mappedPeriods,
+			)
+
+			if errAttr != nil {
+				globalErr = errors.Join(globalErr, errAttr)
+			}
+		}
+	}
+
+	if relation != nil {
+		return nil
+	}
+
+	return globalErr
+}
+
 // Close closes the dao and the underlying pool
 func (d *Dao) Close() {
 	if d != nil && d.pool != nil {

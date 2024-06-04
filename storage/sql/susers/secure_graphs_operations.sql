@@ -145,7 +145,7 @@ begin
     end if;
     -- graph may not exist
     if not exists (
-        select 1 from sgraphs.graphs where graph_id = p_id
+        select 1 from sgraphs.graphs GRA where GRA.graph_id = p_id
     ) then 
         return query select null, null;
         return;
@@ -191,18 +191,18 @@ begin
                 'observer' = ANY(TTG1.roles)
             )
         ), all_childs as (
-            select child_id as graph_id
+            select INC.child_id as graph_id
             from sgraphs.inclusions INC 
             join all_sources ASO on ASO.graph_id = INC.source_id 
         ), all_new_childs as (
-            select graph_id 
+            select ACI.graph_id 
             from all_childs ACI 
             left outer join all_sources ASO on ASO.graph_id = ACI.graph_id 
             where ASO.graph_id is null 
         ), all_new_childs_roles as (
             select ANC.graph_id, array_agg(distinct ROL.role_name) as roles 
             from susers.authorizations AUT
-            join all_new_childs ANC on AUT.resource_id = ANC.graph_id
+            join all_new_childs ANC on AUT.auth_resource = ANC.graph_id
             join susers.roles ROL on ROL.role_id = AUT.auth_role_id
             join susers.classes CLA on CLA.class_id = AUT.auth_class_id
             where AUT.auth_active = true
@@ -218,22 +218,22 @@ begin
             )
         )
         insert into temp_table_graphs_imports(walkthrough_id, height, graph_id, roles)
-        select l_walkthrough_id, l_height + 1, p_id, l_auth;
+        select distinct l_walkthrough_id, l_height + 1, p_id, l_auth;
 
         select l_height + 1 into l_height ;
 
         select (count(*) > 0) into l_stop 
         from temp_table_graphs_imports
         where walkthrough_id = l_walkthrough_id
-        and heigth = l_height; -- no + 1 because we just increased it
+        and height = l_height; -- no + 1 because we just increased it
 
         exit when l_stop;
     end loop;
 
     return query 
-    select graph_id, roles
-    from temp_table_graphs_imports
-    where walkthrough_id = l_walkthrough_id;
+    select distinct TTGI.graph_id, TTGI.roles
+    from temp_table_graphs_imports TTGI
+    where TTGI.walkthrough_id = l_walkthrough_id;
 
     delete from temp_table_graphs_imports
     where walkthrough_id = l_walkthrough_id;
@@ -252,12 +252,12 @@ returns table (
 ) language plpgsql as $$
 declare
 begin 
-    call accept_any_user_access_to_resource_or_raise(p_user_login, 'graph',ARRAY['observer','modifier'], p_id);
+    call susers.accept_any_user_access_to_resource_or_raise(p_user_login, 'graph',ARRAY['observer','modifier'], p_id);
     return query
     with all_source_graphs as (
         select 
         TVGS.graph_id, 
-        ('modifier' = ANY(TVGS.roles)) as editable
+        ('modifier' = ANY(TVGS.graph_roles)) as editable
         from susers.transitive_visible_graphs_since(p_user_login, p_id) TVGS 
     ), all_elements_in_graphs as (
         select 
@@ -270,13 +270,13 @@ begin
         join sgraphs.periods PER on PER.period_id = ELT.element_period
         where element_type in (1, 10)
     ), all_traits_for_elements as (
-        select element_id, array_agg(TRA.trait) as traits 
+        select AEG.element_id, array_agg(TRA.trait) as traits 
         from all_elements_in_graphs AEG
         join sgraphs.element_trait ETR on AEG.element_id = ETR.element_id
-        join sgraphs.traits TRA on TRA.trait_id = ETR.element_trait 
-        group by element_id
-    ), all_entites as (
-        select AEIG.element_id, ETA.attribute_name,  
+        join sgraphs.traits TRA on TRA.trait_id = ETR.trait_id 
+        group by AEG.element_id
+    ), all_entities as (
+        select ETA.entity_id as element_id, ETA.attribute_name as attribute_key,  
         array_agg(ETA.attribute_value order by ETA.period_id) as attribute_values,
         array_agg(sgraphs.serialize_period(PER.period_full, PER.period_empty, PER.period_value) order by PER.period_id) as attribute_periods
         from sgraphs.entity_attributes ETA 
@@ -297,13 +297,57 @@ begin
     )
     select 
     AIG.graph_id, 
+    AIG.editable,
     AIG.element_id, 
-    AIG.traits,
+    AIG.activity,
+    ATE.traits,
     AAE.equivalence_class,
     ALE.attribute_key, 
-    ALE.attribute_values
+    ALE.attribute_values,
+    ALE.attribute_periods
     from all_elements_in_graphs AIG 
     left outer join all_traits_for_elements ATE on ATE.element_id = AIG.element_id 
     left outer join all_entities ALE on ALE.element_id = AIG.element_id 
     left outer join all_accessible_equivalences AAE on AAE.element_id = AIG.element_id;
 end; $$;
+
+alter function susers.transitive_load_entities_in_graph owner to upa;
+
+
+-- susers.upsert_element_in_graph upserts an element from a graph, may raise an exception for auth
+create or replace procedure susers.upsert_element_in_graph(
+    p_user_login text,
+	p_graph_id in text, 
+	p_element_id in text, 
+	p_element_type int, 
+	p_activity in text,
+	p_traits in text[]
+) language plpgsql as $$
+declare 
+begin 
+    call susers.accept_any_user_access_to_resource_or_raise(p_user_login, 'graph', ARRAY['modifier'], p_graph_id);
+    call sgraphs.upsert_element_in_graph(p_graph_id, p_element_id, p_element_type, p_activity, p_traits); 
+end; $$;
+
+alter procedure susers.upsert_element_in_graph owner to upa;
+
+
+create or replace procedure susers.upsert_attributes(p_user_login text, p_id text, p_name text, p_values text[], p_periods text[])
+language plpgsql as $$
+declare 
+    l_graph_id text;
+begin 
+    select ELT.graph_id into l_graph_id
+    from sgraphs.elements ELT
+    where element_id = p_id;
+
+    if l_graph_id is null then 
+        raise exception 'no element matching id %', p_id;
+    end if;
+
+    call susers.accept_any_user_access_to_resource_or_raise(p_user_login, 'graph', ARRAY['modifier'], l_graph_id); 
+    call sgraphs.upsert_attributes(p_id, p_name, p_values, p_periods);
+
+end; $$;
+
+alter procedure susers.upsert_attributes owner to upa;
