@@ -311,7 +311,7 @@ declare
 	l_type int;
 begin 
 
-	if not exists (select 1 from sgraphs.relation_role where element_id) then 
+	if not exists (select 1 from sgraphs.elements where element_id = p_id) then 
 		raise exception 'no match for relaton %', p_id;
 	end if;
 
@@ -325,7 +325,7 @@ begin
 	from sgraphs.elements 
 	where element_id = p_id;
 
-	if l_type is not null and element_type = 1 then 
+	if l_type is not null and l_type = 1 then 
 		update sgraphs.elements 
 		set element_type = 10 
 		where element_id = p_id;
