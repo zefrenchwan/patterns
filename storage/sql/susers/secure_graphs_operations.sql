@@ -324,8 +324,17 @@ create or replace procedure susers.upsert_element_in_graph(
 	p_traits in text[]
 ) language plpgsql as $$
 declare 
+    l_graph_id text;
 begin 
     call susers.accept_any_user_access_to_resource_or_raise(p_user_login, 'graph', ARRAY['modifier'], p_graph_id);
+    
+    select ELT.graph_id into l_graph_id
+    from sgraphs.elements ELT 
+    where ELT.element_id = p_element_id;
+    if l_graph_id is not null and l_graph_id <> p_graph_id then 
+        raise exception 'element graph and graph parameter mismatch';
+    end if;
+
     call sgraphs.upsert_element_in_graph(p_graph_id, p_element_id, p_element_type, p_activity, p_traits); 
 end; $$;
 
@@ -364,7 +373,7 @@ begin
 
     select ELT.graph_id into l_graph_id
     from sgraphs.elements ELT
-    where element_id = p_role_id;
+    where ELT.element_id = p_role_id;
 
     if l_graph_id is null then 
         raise exception 'no element matching id %', p_role_id;
@@ -382,7 +391,7 @@ begin
     ), 
     links_graphs as (
         select distinct 
-        EXR.relation_roles, VIS.graph_id
+        EXR.relation_operand, VIS.graph_id
         from extended_relation_roles EXR
         join sgraphs.elements ELT on ELT.element_id = EXR.relation_operand
         left outer join visible_graphs VIS on ELT.graph_id = VIS.graph_id

@@ -109,11 +109,11 @@ func (d *Dao) CreateGraph(ctx context.Context, creator, name, description string
 	var errExec error
 	newId := uuid.NewString()
 	if len(sources) != 0 {
-		_, errExec = d.pool.Exec(ctx,
+		_, errExec = transaction.Exec(ctx,
 			"call susers.create_graph_from_imports($1,$2,$3,$4,$5)",
 			creator, newId, name, description, sources)
 	} else {
-		_, errExec = d.pool.Exec(ctx,
+		_, errExec = transaction.Exec(ctx,
 			"call susers.create_graph_from_scratch($1,$2,$3,$4)",
 			creator, newId, name, description,
 		)
@@ -124,14 +124,14 @@ func (d *Dao) CreateGraph(ctx context.Context, creator, name, description string
 		return "", errors.Join(errExec, errRollback)
 	}
 
-	_, errExec = d.pool.Exec(ctx, "call susers.clear_graph_metadata($1, $2)", creator, newId)
+	_, errExec = transaction.Exec(ctx, "call susers.clear_graph_metadata($1, $2)", creator, newId)
 	if errExec != nil {
 		errRollback := transaction.Rollback(ctx)
 		return "", errors.Join(errExec, errRollback)
 	}
 
 	for key, values := range metadata {
-		_, errExec := d.pool.Exec(ctx, "call susers.upsert_graph_metadata_entry($1, $2, $3, $4)", creator, newId, key, values)
+		_, errExec := transaction.Exec(ctx, "call susers.upsert_graph_metadata_entry($1, $2, $3, $4)", creator, newId, key, values)
 		if errExec != nil {
 			transaction.Rollback(ctx)
 			return "", errExec
@@ -148,19 +148,28 @@ func (d *Dao) UpsertMetadataForGraph(ctx context.Context, creator string, graphI
 		return errors.New("nil value")
 	}
 
-	_, errExec := d.pool.Exec(ctx, "call susers.clear_graph_metadata($1, $2)", creator, graphId)
+	transaction, errTransaction := d.pool.Begin(ctx)
+	if errTransaction != nil {
+		errRollback := transaction.Rollback(ctx)
+		return errors.Join(errTransaction, errRollback)
+	}
+
+	_, errExec := transaction.Exec(ctx, "call susers.clear_graph_metadata($1, $2)", creator, graphId)
 	if errExec != nil || len(metadata) == 0 {
-		return errExec
+		errRollback := transaction.Rollback(ctx)
+		return errors.Join(errExec, errRollback)
 	}
 
 	for key, values := range metadata {
 		_, errExec := d.pool.Exec(ctx, "call susers.upsert_graph_metadata_entry($1, $2, $3, $4)", creator, graphId, key, values)
 		if errExec != nil || len(metadata) == 0 {
-			return errExec
+			errRollback := transaction.Rollback(ctx)
+			return errors.Join(errExec, errRollback)
 		}
 	}
 
-	return nil
+	errCommit := transaction.Commit(ctx)
+	return errCommit
 }
 
 // ListGraphsForUser returns the graphs an user has access to
@@ -255,7 +264,7 @@ func (d *Dao) UpsertElement(ctx context.Context, user string, graphId string, el
 		relation = element.(nodes.FormalRelation)
 	}
 
-	_, errUpsertElement := d.pool.Exec(ctx,
+	_, errUpsertElement := transaction.Exec(ctx,
 		"call susers.upsert_element_in_graph($1, $2, $3, $4, $5, $6)",
 		user, graphId, element.Id(), elementType,
 		serializePeriod(element.ActivePeriod()),
@@ -263,8 +272,19 @@ func (d *Dao) UpsertElement(ctx context.Context, user string, graphId string, el
 	)
 
 	if errUpsertElement != nil {
-		transaction.Rollback(ctx)
-		return errUpsertElement
+		errRollback := transaction.Rollback(ctx)
+		return errors.Join(errUpsertElement, errRollback)
+	}
+
+	// all checks performed before, so direct access to this function
+	_, errClearElement := transaction.Exec(ctx,
+		"call sgraphs.clear_element_data_in_dependent_tables($1)",
+		element.Id(),
+	)
+
+	if errClearElement != nil {
+		errRollback := transaction.Rollback(ctx)
+		return errors.Join(errClearElement, errRollback)
 	}
 
 	var globalErr error
@@ -290,7 +310,7 @@ func (d *Dao) UpsertElement(ctx context.Context, user string, graphId string, el
 			}
 
 			//susers.upsert_attributes(p_user_login text, p_id text, p_name text, p_values text[], p_periods text[])
-			_, errAttr := d.pool.Exec(ctx,
+			_, errAttr := transaction.Exec(ctx,
 				"call susers.upsert_attributes($1, $2, $3, $4, $5)",
 				user, entity.Id(), attr, mappedValues, mappedPeriods,
 			)
@@ -299,10 +319,17 @@ func (d *Dao) UpsertElement(ctx context.Context, user string, graphId string, el
 				globalErr = errors.Join(globalErr, errAttr)
 			}
 		}
-	}
+	} else if relation != nil {
+		for role, links := range relation.GetValuesPerRole() {
+			_, errUpdate := transaction.Exec(ctx,
+				"call susers.upsert_links($1, $2, $3, $4)",
+				user, relation.Id(), role, links,
+			)
 
-	if relation != nil {
-		return nil
+			if errUpdate != nil {
+				globalErr = errors.Join(globalErr, errUpdate)
+			}
+		}
 	}
 
 	if globalErr != nil {
@@ -314,7 +341,8 @@ func (d *Dao) UpsertElement(ctx context.Context, user string, graphId string, el
 		return globalErr
 	}
 
-	return transaction.Commit(ctx)
+	errCommit := transaction.Commit(ctx)
+	return errCommit
 }
 
 // Close closes the dao and the underlying pool

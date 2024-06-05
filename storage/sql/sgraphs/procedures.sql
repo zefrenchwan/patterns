@@ -246,6 +246,17 @@ begin
 	end loop;
 end; $$;
 
+-- sgraphs.clear_element_data_in_dependent_tables cleans data in relation_role and entity_attributes
+create or replace procedure sgraphs.clear_element_data_in_dependent_tables(p_element_id text) 
+language plpgsql as $$
+declare
+begin
+	delete from sgraphs.entity_attributes where entity_id = p_element_id;
+	delete from sgraphs.relation_role where relation_id = p_element_id;
+end; $$;
+
+alter procedure sgraphs.clear_element_data_in_dependent_tables owner to upa;
+
 -- sgraphs.upsert_attributes adds one attribute and all its values (and periods)
 create or replace procedure sgraphs.upsert_attributes(p_id text, p_name text, p_values text[], p_periods text[])
 language plpgsql as $$
