@@ -95,9 +95,15 @@ func (d *Dao) UpsertUser(ctx context.Context, creator, login, password string) e
 }
 
 // CreateGraph returns the id of built graph, or an error.
-func (d *Dao) CreateGraph(ctx context.Context, creator, name, description string, sources []string) (string, error) {
+func (d *Dao) CreateGraph(ctx context.Context, creator, name, description string, metadata map[string][]string, sources []string) (string, error) {
 	if d == nil || d.pool == nil {
 		return "", errors.New("nil value")
+	}
+
+	transaction, errTransaction := d.pool.Begin(ctx)
+	if errTransaction != nil {
+		errRollback := transaction.Rollback(ctx)
+		return "", errors.Join(errTransaction, errRollback)
 	}
 
 	var errExec error
@@ -113,7 +119,27 @@ func (d *Dao) CreateGraph(ctx context.Context, creator, name, description string
 		)
 	}
 
-	return newId, errExec
+	if errExec != nil {
+		errRollback := transaction.Rollback(ctx)
+		return "", errors.Join(errExec, errRollback)
+	}
+
+	_, errExec = d.pool.Exec(ctx, "call susers.clear_graph_metadata($1, $2)", creator, newId)
+	if errExec != nil {
+		errRollback := transaction.Rollback(ctx)
+		return "", errors.Join(errExec, errRollback)
+	}
+
+	for key, values := range metadata {
+		_, errExec := d.pool.Exec(ctx, "call susers.upsert_graph_metadata_entry($1, $2, $3, $4)", creator, newId, key, values)
+		if errExec != nil {
+			transaction.Rollback(ctx)
+			return "", errExec
+		}
+	}
+
+	errCommit := transaction.Commit(ctx)
+	return newId, errCommit
 }
 
 // UpsertMetadataForGraph clears metadata and forces new values
@@ -212,6 +238,11 @@ func (d *Dao) UpsertElement(ctx context.Context, user string, graphId string, el
 		return nil
 	}
 
+	transaction, errTransaction := d.pool.Begin(ctx)
+	if errTransaction != nil {
+		return errTransaction
+	}
+
 	var elementType int
 	var entity nodes.FormalInstance
 	var relation nodes.FormalRelation
@@ -232,6 +263,7 @@ func (d *Dao) UpsertElement(ctx context.Context, user string, graphId string, el
 	)
 
 	if errUpsertElement != nil {
+		transaction.Rollback(ctx)
 		return errUpsertElement
 	}
 
@@ -273,7 +305,16 @@ func (d *Dao) UpsertElement(ctx context.Context, user string, graphId string, el
 		return nil
 	}
 
-	return globalErr
+	if globalErr != nil {
+		errRollback := transaction.Rollback(ctx)
+		if errRollback != nil {
+			globalErr = errors.Join(globalErr, errRollback)
+		}
+
+		return globalErr
+	}
+
+	return transaction.Commit(ctx)
 }
 
 // Close closes the dao and the underlying pool

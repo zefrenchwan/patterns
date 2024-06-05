@@ -332,6 +332,7 @@ end; $$;
 alter procedure susers.upsert_element_in_graph owner to upa;
 
 
+-- susers.upsert_attributes performs a secure upsert on attributes
 create or replace procedure susers.upsert_attributes(p_user_login text, p_id text, p_name text, p_values text[], p_periods text[])
 language plpgsql as $$
 declare 
@@ -351,3 +352,50 @@ begin
 end; $$;
 
 alter procedure susers.upsert_attributes owner to upa;
+
+
+-- susers.upsert_links upserts links if user has access to all underlying graphs
+create or replace procedure susers.upsert_links(p_user_login text, p_role_id text, p_role_name text, p_operands text[])
+language plpgsql as $$
+declare 
+    l_graph_id text;
+    l_all_auth bool;
+begin 
+
+    select ELT.graph_id into l_graph_id
+    from sgraphs.elements ELT
+    where element_id = p_role_id;
+
+    if l_graph_id is null then 
+        raise exception 'no element matching id %', p_role_id;
+    end if;
+
+    call susers.accept_any_user_access_to_resource_or_raise(p_user_login, 'graph', ARRAY['modifier'], l_graph_id); 
+
+
+    with extended_relation_roles as (
+        select unnest(p_operands) as relation_operand
+    ),
+    visible_graphs as (
+        select TVGS.graph_id
+        from susers.transitive_visible_graphs_since(p_user_login, l_graph_id) TVGS 
+    ), 
+    links_graphs as (
+        select distinct 
+        EXR.relation_roles, VIS.graph_id
+        from extended_relation_roles EXR
+        join sgraphs.elements ELT on ELT.element_id = EXR.relation_operand
+        left outer join visible_graphs VIS on ELT.graph_id = VIS.graph_id
+     )
+    select (count(*) = 0) into l_all_auth
+    from links_graphs LIG
+    where LIG.graph_id is null;
+
+    if not l_all_auth then 
+        raise exception 'auth failure: missing auth for linked elements graphs';
+    else
+        call sgraphs.upsert_links(p_role_id, p_role_name, p_operands);
+    end if;
+end;$$;
+
+alter procedure susers.upsert_links owner to upa;

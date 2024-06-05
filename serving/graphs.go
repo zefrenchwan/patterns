@@ -31,21 +31,13 @@ func createGraphHandler(wrapper ServiceParameters, w http.ResponseWriter, r *htt
 		return NewServiceHttpClientError("expecting graph name")
 	}
 
-	newId, errCreate := wrapper.Dao.CreateGraph(wrapper.Ctx, user, input.Name, input.Description, input.Sources)
+	newId, errCreate := wrapper.Dao.CreateGraph(wrapper.Ctx, user, input.Name, input.Description, input.Metadata, input.Sources)
 	if errCreate != nil {
 		return BuildApiErrorFromStorageError(errCreate)
-	} else if len(input.Metadata) == 0 {
-		json.NewEncoder(w).Encode(newId)
-		return nil
 	}
 
-	errUpdate := wrapper.Dao.UpsertMetadataForGraph(wrapper.Ctx, user, newId, input.Metadata)
-	if errUpdate != nil {
-		return BuildApiErrorFromStorageError(errUpdate)
-	}
-
-	json.NewEncoder(w).Encode(newId)
-	return nil
+	errResponse := json.NewEncoder(w).Encode(newId)
+	return errResponse
 }
 
 // listGraphHandler displays graphs available to an user
