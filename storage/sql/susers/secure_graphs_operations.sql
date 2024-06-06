@@ -243,16 +243,16 @@ end; $$;
 alter function susers.transitive_visible_graphs_since owner to upa;
 
 
--- susers.transitive_load_entities_in_graph gets all entities an user may use from a graph
-create or replace function susers.transitive_load_entities_in_graph(p_user_login text, p_id text)
+-- susers.transitive_load_base_elements_in_graph loads all visible elements from a graph to all its dependencies
+create or replace function susers.transitive_load_base_elements_in_graph(p_user_login text, p_id text)
 returns table (
     graph_id text, editable bool, 
-    element_id text, activity text, traits text[], equivalence_class text[],
-    attribute_key text, attribute_values text[], attribute_periods text[]
-) language plpgsql as $$
+    element_id text, element_type int, activity text, traits text[], 
+    equivalence_class text[]) language plpgsql as $$
 declare
 begin 
     call susers.accept_any_user_access_to_resource_or_raise(p_user_login, 'graph',ARRAY['observer','modifier'], p_id);
+    
     return query
     with all_source_graphs as (
         select 
@@ -264,25 +264,17 @@ begin
         ELT.graph_id, 
         ASG.editable,
         ELT.element_id,
+        ELT.element_type,
         sgraphs.serialize_period(PER.period_full, PER.period_empty, PER.period_value) as activity
         from sgraphs.elements ELT  
         join all_source_graphs ASG on ASG.graph_id = ELT.graph_id
         join sgraphs.periods PER on PER.period_id = ELT.element_period
-        where element_type in (1, 10)
     ), all_traits_for_elements as (
         select AEG.element_id, array_agg(TRA.trait) as traits 
         from all_elements_in_graphs AEG
         join sgraphs.element_trait ETR on AEG.element_id = ETR.element_id
         join sgraphs.traits TRA on TRA.trait_id = ETR.trait_id 
         group by AEG.element_id
-    ), all_entities as (
-        select ETA.entity_id as element_id, ETA.attribute_name as attribute_key,  
-        array_agg(ETA.attribute_value order by ETA.period_id) as attribute_values,
-        array_agg(sgraphs.serialize_period(PER.period_full, PER.period_empty, PER.period_value) order by PER.period_id) as attribute_periods
-        from sgraphs.entity_attributes ETA 
-        join all_elements_in_graphs AEIG on ETA.entity_id = AEIG.element_id 
-        join sgraphs.periods PER on PER.period_id = ETA.period_id 
-        group by ETA.entity_id, ETA.attribute_name
     ), all_accessible_equivalences as (
         select NOD.source_element_id as element_id, array_agg(NOD.child_element_id) as equivalence_class
         from sgraphs.nodes NOD
@@ -299,19 +291,118 @@ begin
     AIG.graph_id, 
     AIG.editable,
     AIG.element_id, 
+    AIG.element_type,
     AIG.activity,
     ATE.traits,
-    AAE.equivalence_class,
+    AAE.equivalence_class
+    from all_elements_in_graphs AIG 
+    left outer join all_traits_for_elements ATE on ATE.element_id = AIG.element_id
+    left outer join all_accessible_equivalences AAE on AAE.element_id = AIG.element_id;
+
+end;$$;
+
+alter function susers.transitive_load_base_elements_in_graph owner to upa;
+
+
+-- susers.transitive_load_entities_in_graph gets all entities an user may use from a graph
+create or replace function susers.transitive_load_entities_in_graph(p_user_login text, p_id text)
+returns table (
+    graph_id text, editable bool, 
+    element_id text, activity text, traits text[], equivalence_class text[],
+    attribute_key text, attribute_values text[], attribute_periods text[]
+) language plpgsql as $$
+declare
+begin 
+    call susers.accept_any_user_access_to_resource_or_raise(p_user_login, 'graph',ARRAY['observer','modifier'], p_id);
+    return query
+    with all_source_entities as (
+        select TLB.graph_id, TLB.editable, 
+        TLB.element_id, TLB.activity, TLB.traits, 
+        TLB.equivalence_class
+        from susers.transitive_load_base_elements_in_graph(p_user_login, p_id) TLB
+        where TLB.element_type in (1,10)
+    ), all_entities as (
+        select ETA.entity_id as element_id, ETA.attribute_name as attribute_key,  
+        array_agg(ETA.attribute_value order by ETA.period_id) as attribute_values,
+        array_agg(sgraphs.serialize_period(PER.period_full, PER.period_empty, PER.period_value) order by PER.period_id) as attribute_periods
+        from sgraphs.entity_attributes ETA 
+        join all_source_entities ASE on ETA.entity_id = ASE.element_id 
+        join sgraphs.periods PER on PER.period_id = ETA.period_id 
+        group by ETA.entity_id, ETA.attribute_name
+    )
+    select 
+    ASE.graph_id, 
+    ASE.editable,
+    ASE.element_id, 
+    ASE.activity,
+    ASE.traits,
+    ASE.equivalence_class,
     ALE.attribute_key, 
     ALE.attribute_values,
     ALE.attribute_periods
-    from all_elements_in_graphs AIG 
-    left outer join all_traits_for_elements ATE on ATE.element_id = AIG.element_id 
-    left outer join all_entities ALE on ALE.element_id = AIG.element_id 
-    left outer join all_accessible_equivalences AAE on AAE.element_id = AIG.element_id;
+    from  all_source_entities ASE 
+    left outer join all_entities ALE on ALE.element_id = ASE.element_id;
 end; $$;
 
 alter function susers.transitive_load_entities_in_graph owner to upa;
+
+
+create or replace function susers.transitive_load_relations_in_graph(p_user_login text, p_id text)
+returns table (
+    graph_id text, editable bool, 
+    element_id text, activity text, traits text[], equivalence_class text[],
+    role_in_relation text, role_values text[]
+) language plpgsql as $$
+declare
+begin 
+    call susers.accept_any_user_access_to_resource_or_raise(p_user_login, 'graph',ARRAY['observer','modifier'], p_id);
+    return query
+    with all_visible_graphs as (
+        select TGS.graph_id
+        from susers.transitive_visible_graphs_since(p_user_login, p_id) TGS
+    ), all_source_elements as (
+        select TLB.graph_id, TLB.editable, 
+        TLB.element_id, TLB.activity, TLB.traits, 
+        TLB.equivalence_class
+        from susers.transitive_load_base_elements_in_graph(p_user_login, p_id) TLB
+        where TLB.element_type in (2,10)
+    ), all_relations as (
+        select RRO.relation_id, 
+        RRO.role_in_relation, 
+        RRO.role_values
+        from sgraphs.relation_role RRO
+        join all_source_elements ASE on ASE.element_id = RRO.relation_id
+    ), all_expanded_relations as (
+        select ALR.relation_id, 
+        unnest(ALR.role_values) as role_value 
+        from all_relations ALR
+    ), all_unauthorized_relations as (
+        select distinct AER.relation_id
+        from all_expanded_relations AER
+        join sgraphs.elements ELT on ELT.element_id = AER.role_value
+        left outer join all_visible_graphs AGR on AGR.graph_id = ELT.graph_id
+        where AGR.graph_id is null 
+    ), all_visible_relations as (
+        select distinct ALR.relation_id 
+        from all_relations ALR 
+        left outer join all_unauthorized_relations AUR on AUR.relation_id = ALR.relation_id
+        where AUR.relation_id is null
+    )
+    select distinct
+    ASE.graph_id, 
+    ASE.editable,
+    ASE.element_id, 
+    ASE.activity,
+    ASE.traits,
+    ASE.equivalence_class,
+    ALR.role_in_relation, 
+    ALR.role_values
+    from all_source_elements ASE 
+    join all_relations ALR on ALR.relation_id = ASE.element_id
+    join all_visible_relations AVR on ALR.relation_id = AVR.relation_id;
+end; $$;
+
+alter function susers.transitive_load_relations_in_graph owner to upa;
 
 
 -- susers.upsert_element_in_graph upserts an element from a graph, may raise an exception for auth
