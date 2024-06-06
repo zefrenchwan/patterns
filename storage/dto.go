@@ -4,6 +4,7 @@ import (
 	"errors"
 	"slices"
 
+	"github.com/zefrenchwan/patterns.git/graphs"
 	"github.com/zefrenchwan/patterns.git/nodes"
 )
 
@@ -12,8 +13,8 @@ const (
 	DATE_SERDE_FORMAT = "2006-01-02T15:04:05"
 )
 
-// GraphsForUserDTO contains graphs an user has access to
-type GraphsForUserDTO struct {
+// AuthGraphDTO contains graphs an user has access to
+type AuthGraphDTO struct {
 	Id          string              `json:"id"`
 	Name        string              `json:"name"`
 	Roles       []string            `json:"roles"`
@@ -21,40 +22,28 @@ type GraphsForUserDTO struct {
 	Metadata    map[string][]string `json:"metadata"`
 }
 
-// EntityTraitsDTO is a dto to deal with just entity ids and related traits
-type EntityTraitsDTO struct {
-	// Id of the entity
-	Id string `json:"id"`
-	// Activity is the activity of the entity
-	Activity string `json:"activity"`
-	// Traits of the matching entity
-	Traits []string `json:"traits"`
+// GraphWithElementsDTO is a full graph representation
+type GraphWithElementsDTO struct {
+	Id          string              `json:"id"`
+	Name        string              `json:"name"`
+	Description string              `json:"description"`
+	Metadata    map[string][]string `json:"metadata"`
+	Nodes       []GraphNodeDTO      `json:"nodes"`
 }
 
-// RelationalStatstDTO provides, for an id at a given time, the stats about its relationships
-type RelationalStatstDTO struct {
-	// Trait of the relations
-	Trait string `json:"trait,omitempty"`
-	// Role of the element within the relations
-	Role string `json:"role"`
-	// Active is true if the period for the relations is active
-	Active bool `json:"active"`
-	// Counter is the number of matching relations with this criteria
-	Counter int64 `json:"counter"`
+// EquivalenceObjectDTO defines an equivalence entry as a source graph and source element.
+// It is easier to understand than a map[element id] graph id
+type EquivalenceObjectDTO struct {
+	SourceGraph   string `json:"graph"`
+	SourceElement string `json:"element"`
 }
 
-// RelationalOperandsStatstDTO contains stats about relations around an element, including operands
-type RelationalOperandsStatstDTO struct {
-	// Trait of the relations
-	Trait string `json:"trait,omitempty"`
-	// Role of the element within the relations
-	Role string `json:"role"`
-	// Active is true if the period for the relations is active
-	Active bool `json:"active"`
-	// Operands contains all the operands of the relation
-	Operands []string `json:"operands"`
-	// Counter is the number of matching relations with this criteria
-	Counter int64 `json:"counter"`
+// GraphNodeDTO represents a DTO for a node in a graph (same structure)
+type GraphNodeDTO struct {
+	EquivalenceClassGraph []EquivalenceObjectDTO `json:"equivalents,omitempty"`
+	SourceGraph           string                 `json:"source"`
+	Value                 ElementDTO             `json:"element"`
+	Editable              bool                   `json:"editable"`
 }
 
 // ElementDTO regroups entity and relation content into a single DTO
@@ -161,4 +150,55 @@ func DeserializeElement(dto ElementDTO) (nodes.Element, error) {
 
 		return &entity, globalErr
 	}
+}
+
+// serializeFullGraph maps a graph (value is huge) to its dto (huge object, going as pointer)
+func SerializeFullGraph(g *graphs.Graph) *GraphWithElementsDTO {
+	if g == nil {
+		return nil
+	}
+
+	result := new(GraphWithElementsDTO)
+	// copy graph data
+	result.Id = g.Id
+	result.Name = g.Name
+	result.Description = g.Description
+	if len(g.Metadata) != 0 {
+		result.Metadata = make(map[string][]string)
+		for name, values := range g.Metadata {
+			sizeValues := len(values)
+			if sizeValues == 0 {
+				result.Metadata[name] = nil
+			} else {
+				copyValues := make([]string, sizeValues)
+				copy(copyValues, values)
+				result.Metadata[name] = copyValues
+			}
+		}
+	}
+
+	// copy each element
+	for _, node := range g.Nodes() {
+		mappedNode := GraphNodeDTO{
+			Editable:    node.Editable,
+			SourceGraph: node.SourceGraph,
+			Value:       SerializeElement(node.Value),
+		}
+
+		equivalenceSize := len(node.EquivalenceClass)
+		if equivalenceSize > 0 {
+			for localElement, localGraph := range node.EquivalenceClass {
+				newEquivalentDTO := EquivalenceObjectDTO{
+					SourceGraph:   localGraph,
+					SourceElement: localElement,
+				}
+
+				mappedNode.EquivalenceClassGraph = append(mappedNode.EquivalenceClassGraph, newEquivalentDTO)
+			}
+		}
+
+		result.Nodes = append(result.Nodes, mappedNode)
+	}
+
+	return result
 }

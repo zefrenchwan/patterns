@@ -115,11 +115,11 @@ alter function susers.list_graphs_for_user owner to upa;
 
 -- susers.load_graph_metadata returns the name, description and associated map of a graph, if user is authorized
 create or replace function susers.load_graph_metadata(p_user_login text, p_id text)
-returns table (graph_name text, graph_description name, entry_key text, entry_values text[])
+returns table (graph_name text, graph_description text, entry_key text, entry_values text[])
 language plpgsql as $$
 declare 
 begin 
-	call accept_any_user_access_to_resource_or_raise(p_user_login, 'graph',ARRAY['manager','observer','modifier'], p_id);
+	call susers.accept_any_user_access_to_resource_or_raise(p_user_login, 'graph',ARRAY['manager','observer','modifier'], p_id);
 	return query select * from sgraphs.load_graph_metadata(p_id);
 end; $$;
 
@@ -248,7 +248,8 @@ create or replace function susers.transitive_load_base_elements_in_graph(p_user_
 returns table (
     graph_id text, editable bool, 
     element_id text, element_type int, activity text, traits text[], 
-    equivalence_class text[]) language plpgsql as $$
+    equivalence_class text[], equivalence_class_graph text[]
+) language plpgsql as $$
 declare
 begin 
     call susers.accept_any_user_access_to_resource_or_raise(p_user_login, 'graph',ARRAY['observer','modifier'], p_id);
@@ -276,15 +277,13 @@ begin
         join sgraphs.traits TRA on TRA.trait_id = ETR.trait_id 
         group by AEG.element_id
     ), all_accessible_equivalences as (
-        select NOD.source_element_id as element_id, array_agg(NOD.child_element_id) as equivalence_class
+        select NOD.source_element_id as element_id, 
+        array_agg(NOD.child_element_id order by AGR2.graph_id) as equivalence_class,
+        array_agg(AGR2.graph_id order by AGR2.graph_id) as equivalence_class_graph
         from sgraphs.nodes NOD
-        where exists (
-            select 1 from all_elements_in_graphs AGR1
-            where AGR1.element_id = NOD.source_element_id 
-        ) and exists (
-            select 1 from all_elements_in_graphs AGR2
-            where AGR2.element_id = NOD.child_element_id
-        )
+        -- to ensure the source graph is visible. We take all source graphs, not only current
+        join all_elements_in_graphs AGR1 on AGR1.element_id = NOD.source_element_id
+        join all_elements_in_graphs AGR2 on AGR2.element_id = NOD.child_element_id
         group by NOD.source_element_id
     )
     select 
@@ -294,7 +293,8 @@ begin
     AIG.element_type,
     AIG.activity,
     ATE.traits,
-    AAE.equivalence_class
+    AAE.equivalence_class,
+    AAE.equivalence_class_graph
     from all_elements_in_graphs AIG 
     left outer join all_traits_for_elements ATE on ATE.element_id = AIG.element_id
     left outer join all_accessible_equivalences AAE on AAE.element_id = AIG.element_id;
@@ -308,7 +308,8 @@ alter function susers.transitive_load_base_elements_in_graph owner to upa;
 create or replace function susers.transitive_load_entities_in_graph(p_user_login text, p_id text)
 returns table (
     graph_id text, editable bool, 
-    element_id text, activity text, traits text[], equivalence_class text[],
+    element_id text, activity text, traits text[], 
+    equivalence_class text[], equivalence_class_graph text[],
     attribute_key text, attribute_values text[], attribute_periods text[]
 ) language plpgsql as $$
 declare
@@ -318,7 +319,7 @@ begin
     with all_source_entities as (
         select TLB.graph_id, TLB.editable, 
         TLB.element_id, TLB.activity, TLB.traits, 
-        TLB.equivalence_class
+        TLB.equivalence_class, TLB.equivalence_class_graph
         from susers.transitive_load_base_elements_in_graph(p_user_login, p_id) TLB
         where TLB.element_type in (1,10)
     ), all_entities as (
@@ -337,6 +338,7 @@ begin
     ASE.activity,
     ASE.traits,
     ASE.equivalence_class,
+    ASE.equivalence_class_graph,
     ALE.attribute_key, 
     ALE.attribute_values,
     ALE.attribute_periods
@@ -350,7 +352,8 @@ alter function susers.transitive_load_entities_in_graph owner to upa;
 create or replace function susers.transitive_load_relations_in_graph(p_user_login text, p_id text)
 returns table (
     graph_id text, editable bool, 
-    element_id text, activity text, traits text[], equivalence_class text[],
+    element_id text, activity text, traits text[], 
+    equivalence_class text[], equivalence_class_graph text[],
     role_in_relation text, role_values text[]
 ) language plpgsql as $$
 declare
@@ -363,7 +366,7 @@ begin
     ), all_source_elements as (
         select TLB.graph_id, TLB.editable, 
         TLB.element_id, TLB.activity, TLB.traits, 
-        TLB.equivalence_class
+        TLB.equivalence_class, TLB.equivalence_class_graph
         from susers.transitive_load_base_elements_in_graph(p_user_login, p_id) TLB
         where TLB.element_type in (2,10)
     ), all_relations as (
@@ -395,6 +398,7 @@ begin
     ASE.activity,
     ASE.traits,
     ASE.equivalence_class,
+    ASE.equivalence_class_graph,
     ALR.role_in_relation, 
     ALR.role_values
     from all_source_elements ASE 

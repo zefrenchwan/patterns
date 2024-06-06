@@ -2,7 +2,6 @@ package graphs
 
 import (
 	"errors"
-	"slices"
 
 	"github.com/google/uuid"
 	"github.com/zefrenchwan/patterns.git/nodes"
@@ -11,15 +10,13 @@ import (
 // Node defines an element visible in the graph
 type Node struct {
 	// equivalenceClass defines the equivalent elements (key) and their source graph
-	equivalenceClass map[string]string
-	// conflict is false if all the values in the equivalence class are the same, false otherwise
-	conflict bool
-	// sourceGraph contains the source graph
-	sourceGraph string
+	EquivalenceClass map[string]string
+	// SourceGraph contains the source graph
+	SourceGraph string
 	// value is the actual displayed value
-	value nodes.Element
-	// editable is true if current user may modify the node
-	editable bool
+	Value nodes.Element
+	// Editable is true if current user may modify the node
+	Editable bool
 }
 
 // Graph defines a graph
@@ -42,26 +39,46 @@ type Graph struct {
 	dirtyNodes []string
 }
 
-// NewGraph constructs a new graph
-func NewGraph(name, description string) Graph {
+// NewEmptyGraph returns a new empty graph
+func NewEmptyGraph() Graph {
 	return Graph{
-		Id:          uuid.NewString(),
-		Name:        name,
-		Description: description,
-		Metadata:    make(map[string][]string),
-		values:      make(map[string]Node),
-		dirtyNodes:  nil,
+		Metadata:   make(map[string][]string),
+		values:     make(map[string]Node),
+		dirtyNodes: nil,
 	}
 }
 
-// Owns returns true if this graph is the source for this element, false otherwise
-func (g *Graph) Owns(elementId string) bool {
-	if g == nil {
-		return false
-	} else if node, found := g.values[elementId]; !found {
-		return false
-	} else {
-		return node.sourceGraph == g.Id
+// NewGraph constructs a new graph
+func NewGraph(name, description string) Graph {
+	return NewGraphWithId(uuid.NewString(), name, description)
+}
+
+// NewGraphWithId builds a new graph with a given id, name and description
+func NewGraphWithId(id, name, description string) Graph {
+	graph := NewEmptyGraph()
+	graph.Id = id
+	graph.Name = name
+	graph.Description = description
+	return graph
+}
+
+// SetLoadedElement set values (overwrites a previous one if any) for a given element
+func (g *Graph) SetLoadedElement(currentElement nodes.Element, sourceGraph string, editable bool, equivalenceClassByGaph map[string]string) {
+	if g == nil || currentElement == nil {
+		return
+	}
+
+	elementId := currentElement.Id()
+	_, found := g.values[elementId]
+	if found {
+		delete(g.values, elementId)
+	}
+
+	g.values[elementId] = Node{
+		EquivalenceClass: equivalenceClassByGaph,
+		SourceGraph:      sourceGraph,
+		Value:            currentElement,
+		Editable:         editable,
 	}
 }
 
@@ -80,36 +97,25 @@ func (g *Graph) CreateNodeFrom(newValue nodes.Element, source string) error {
 		return errors.New("same id for source and new value")
 	}
 
-	nodeValue.conflict = false
-	nodeValue.sourceGraph = g.Id
-	nodeValue.value = newValue
-	nodeValue.equivalenceClass[id] = g.Id
+	nodeValue.SourceGraph = g.Id
+	nodeValue.Value = newValue
+	nodeValue.EquivalenceClass[id] = g.Id
 	delete(g.values, source)
 	g.values[id] = nodeValue
 	g.dirtyNodes = append(g.dirtyNodes, id)
 	return nil
 }
 
-// UpsertOwnedNode changes the node in the graph if it owns the node
-func (g *Graph) UpsertOwnedNode(element nodes.Element) {
+// Nodes returns all the nodes in the graph
+func (g *Graph) Nodes() []Node {
 	if g == nil {
-		return
+		return nil
 	}
 
-	id := element.Id()
-	valueForNode := g.values[id]
-
-	if slices.Contains(g.dirtyNodes, id) {
-		valueForNode.value = element
-	} else {
-		g.dirtyNodes = append(g.dirtyNodes, id)
-		valueForNode = Node{
-			equivalenceClass: nil,
-			conflict:         false,
-			sourceGraph:      g.Id,
-			value:            element,
-		}
+	var result []Node
+	for _, node := range g.values {
+		result = append(result, node)
 	}
 
-	g.values[id] = valueForNode
+	return result
 }

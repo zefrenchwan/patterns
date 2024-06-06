@@ -4,8 +4,12 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+
+	"github.com/zefrenchwan/patterns.git/graphs"
+	"github.com/zefrenchwan/patterns.git/storage"
 )
 
+// GraphDataDTO is the input to create a graph
 type GraphDataDTO struct {
 	Name        string              `json:"name"`
 	Description string              `json:"description,omitempty"`
@@ -55,5 +59,31 @@ func listGraphHandler(wrapper ServiceParameters, w http.ResponseWriter, r *http.
 	}
 
 	json.NewEncoder(w).Encode(availableGraphs)
+	return nil
+}
+
+// loadGraphHandler loads a graph by id if user has access to it
+func loadGraphHandler(wrapper ServiceParameters, w http.ResponseWriter, r *http.Request) error {
+	defer r.Body.Close()
+
+	user, auth := wrapper.CurrentUser()
+	if !auth {
+		return NewServiceForbiddenError("should authenticate")
+	}
+
+	graphId := r.PathValue("graphId")
+	if len(graphId) == 0 {
+		return NewServiceHttpClientError("expecting graph id")
+	}
+
+	var rawGraph graphs.Graph
+	if raw, err := wrapper.Dao.LoadGraphForUser(wrapper.Ctx, user, graphId); err != nil {
+		return BuildApiErrorFromStorageError(err)
+	} else {
+		rawGraph = raw
+	}
+
+	dto := storage.SerializeFullGraph(&rawGraph)
+	json.NewEncoder(w).Encode(dto)
 	return nil
 }

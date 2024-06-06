@@ -343,7 +343,7 @@ alter procedure sgraphs.upsert_links owner to upa;
 
 -- sgraphs.load_graph_metadata returns the name, description and associated map of a graph
 create or replace function sgraphs.load_graph_metadata(p_id text)
-returns table (graph_name text, graph_description name, entry_key text, entry_values text[])
+returns table (graph_name text, graph_description text, entry_key text, entry_values text[])
 language plpgsql as $$
 declare 
 begin 
