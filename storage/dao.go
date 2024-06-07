@@ -396,7 +396,7 @@ func (d *Dao) LoadGraphForUser(ctx context.Context, user string, graphId string)
 		// OK, now update the element
 		if previousId != "" && elementId != previousId {
 			// previous value is complete, now insert
-			result.SetLoadedElement(currentEntity, currentGraphId, currentGraphEditable, localEquivalenceClassGraph)
+			result.SetElement(currentEntity, currentGraphId, currentGraphEditable, localEquivalenceClassGraph)
 			// make new element
 			currentValue, _ := nodes.NewEntityWithId(elementId, traits, activity)
 			currentEntity = &currentValue
@@ -423,7 +423,7 @@ func (d *Dao) LoadGraphForUser(ctx context.Context, user string, graphId string)
 	}
 
 	// set last value. Either it did not exist and is saved, or it is just resaved
-	result.SetLoadedElement(currentEntity, currentGraphId, currentGraphEditable, localEquivalenceClassGraph)
+	result.SetElement(currentEntity, currentGraphId, currentGraphEditable, localEquivalenceClassGraph)
 
 	if globalErr != nil {
 		return empty, globalErr
@@ -527,7 +527,7 @@ func (d *Dao) LoadGraphForUser(ctx context.Context, user string, graphId string)
 		// OK, now update the element
 		if previousId != "" && elementId != previousId {
 			// previous value is complete, now insert
-			result.SetLoadedElement(currentRelation, currentGraphId, currentGraphEditable, localEquivalenceClassGraph)
+			result.SetElement(currentRelation, currentGraphId, currentGraphEditable, localEquivalenceClassGraph)
 			// make new element
 			currentValue, _ := nodes.NewEntityWithId(elementId, traits, activity)
 			currentEntity = &currentValue
@@ -538,7 +538,7 @@ func (d *Dao) LoadGraphForUser(ctx context.Context, user string, graphId string)
 	}
 
 	// set last value. Either it did not exist and is saved, or it is just resaved
-	result.SetLoadedElement(currentRelation, currentGraphId, currentGraphEditable, localEquivalenceClassGraph)
+	result.SetElement(currentRelation, currentGraphId, currentGraphEditable, localEquivalenceClassGraph)
 
 	if globalErr != nil {
 		return empty, globalErr

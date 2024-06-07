@@ -2,6 +2,7 @@ package graphs
 
 import (
 	"errors"
+	"slices"
 
 	"github.com/google/uuid"
 	"github.com/zefrenchwan/patterns.git/nodes"
@@ -62,8 +63,32 @@ func NewGraphWithId(id, name, description string) Graph {
 	return graph
 }
 
-// SetLoadedElement set values (overwrites a previous one if any) for a given element
-func (g *Graph) SetLoadedElement(currentElement nodes.Element, sourceGraph string, editable bool, equivalenceClassByGaph map[string]string) {
+// MarkExistingElementAsDirty flags a node as dirty, to save
+func (g *Graph) MarkExistingElementAsDirty(currentElement nodes.Element) error {
+	if g == nil || currentElement == nil {
+		return errors.New("nil value")
+	}
+
+	elementId := currentElement.Id()
+	currentNode, found := g.values[elementId]
+	if !found {
+		return errors.New("node did not exist")
+	} else if !currentNode.Editable {
+		return errors.New("node is not editable")
+	} else if g.dirtyNodes == nil {
+		g.dirtyNodes = []string{elementId}
+	} else if !slices.Contains(g.dirtyNodes, elementId) {
+		g.dirtyNodes = append(g.dirtyNodes, elementId)
+	}
+
+	currentNode.Value = currentElement
+	g.values[elementId] = currentNode
+
+	return nil
+}
+
+// SetElement set values (overwrites a previous one if any) for a given element
+func (g *Graph) SetElement(currentElement nodes.Element, sourceGraph string, editable bool, equivalenceClassByGaph map[string]string) {
 	if g == nil || currentElement == nil {
 		return
 	}
@@ -110,6 +135,20 @@ func (g *Graph) CreateNodeFrom(newValue nodes.Element, source string) error {
 func (g *Graph) Nodes() []Node {
 	if g == nil {
 		return nil
+	}
+
+	var result []Node
+	for _, node := range g.values {
+		result = append(result, node)
+	}
+
+	return result
+}
+
+// DirtyNodes returns the nodes to save, either an empty slice, or the values
+func (g *Graph) DirtyNodes() []Node {
+	if g == nil || len(g.dirtyNodes) == 0 {
+		return []Node{}
 	}
 
 	var result []Node
