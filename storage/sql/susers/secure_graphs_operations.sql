@@ -134,7 +134,6 @@ declare
     l_user_id text;
     l_auth text[];
     l_walkthrough_id text;
-    l_stop bool;
     l_height int;
 begin 
     -- test if user exists. If not, return null, null
@@ -167,6 +166,11 @@ begin
         return;
     end if;
 
+    -- principle is: 
+    -- inclusions table contains source (the parent graph) and its childs (the depenndant graphs). 
+    -- So, starting from a graph, we consider it as the child and move back, as much as possible, 
+    -- through its parents again and again until no more data is inserted
+
     -- creates walkthrough table if it does not exist
     create temporary table if not exists 
     temp_table_graphs_imports(walkthrough_id text, height int, graph_id text, roles text[]);
@@ -178,10 +182,9 @@ begin
     insert into temp_table_graphs_imports(walkthrough_id, height, graph_id, roles)
     select l_walkthrough_id, l_height, p_id, l_auth;
 
-    l_stop = false;
     loop 
 
-        with all_sources as (
+        with all_current_childs as (
             select TTG1.graph_id 
             from temp_table_graphs_imports TTG1
             where walkthrough_id = l_walkthrough_id 
@@ -190,44 +193,62 @@ begin
                 'modifier' = ANY(TTG1.roles) or 
                 'observer' = ANY(TTG1.roles)
             )
-        ), all_childs as (
-            select INC.child_id as graph_id
+        ), all_parents as (
+            select INC.source_id as graph_id
             from sgraphs.inclusions INC 
-            join all_sources ASO on ASO.graph_id = INC.source_id 
-        ), all_new_childs as (
-            select ACI.graph_id 
-            from all_childs ACI 
-            left outer join all_sources ASO on ASO.graph_id = ACI.graph_id 
-            where ASO.graph_id is null 
-        ), all_new_childs_roles as (
-            select ANC.graph_id, array_agg(distinct ROL.role_name) as roles 
+            join all_current_childs ACC on ACC.graph_id = INC.child_id 
+        ), all_new_parents as (
+            select APA.graph_id 
+            from all_parents APA 
+            left outer join all_current_childs ACC on ACC.graph_id = APA.graph_id 
+            where ACC.graph_id is null 
+        ), all_new_parents_extended_roles as (
+            select ANP.graph_id, ROL.role_name 
             from susers.authorizations AUT
-            join all_new_childs ANC on AUT.auth_resource = ANC.graph_id
+            join all_new_parents ANP on AUT.auth_resource = ANP.graph_id
             join susers.roles ROL on ROL.role_id = AUT.auth_role_id
             join susers.classes CLA on CLA.class_id = AUT.auth_class_id
             where AUT.auth_active = true
             and CLA.class_name = 'graph'
             and AUT.auth_user_id = l_user_id
-            group by ANC.graph_id
-        ), all_auth_childs as (
-            select ANCR.graph_id, ANCR.roles
-            from all_new_childs_roles ANCR
+            UNION ALL 
+            select ANP.graph_id, ROL.role_name 
+            from susers.authorizations AUT
+            join susers.roles ROL on ROL.role_id = AUT.auth_role_id
+            join susers.classes CLA on CLA.class_id = AUT.auth_class_id
+            cross join all_new_parents ANP
+            where AUT.auth_active = true
+            and CLA.class_name = 'graph'
+            and AUT.auth_user_id = l_user_id
+            and AUT.auth_resource is null 
+        ), all_new_parents_roles as (
+            select ANPER.graph_id, array_agg(distinct ANPER.role_name) as roles 
+            from all_new_parents_extended_roles ANPER
+            group by ANPER.graph_id
+        ), all_auth_parents as (
+            select distinct ANPR.graph_id, ANPR.roles
+            from all_new_parents_roles ANPR
             where  (
-                'modifier' = ANY(ANCR.roles) or 
-                'observer' = ANY(ANCR.roles)
+                'modifier' = ANY(ANPR.roles) or 
+                'observer' = ANY(ANPR.roles)
             )
         )
         insert into temp_table_graphs_imports(walkthrough_id, height, graph_id, roles)
-        select distinct l_walkthrough_id, l_height + 1, p_id, l_auth;
+        select distinct l_walkthrough_id, l_height + 1, AAP.graph_id, AAP.roles
+        from all_auth_parents AAP;
 
-        select l_height + 1 into l_height ;
-
-        select (count(*) > 0) into l_stop 
-        from temp_table_graphs_imports
-        where walkthrough_id = l_walkthrough_id
-        and height = l_height; -- no + 1 because we just increased it
-
-        exit when l_stop;
+        -- test if we inserted something
+        if not exists (
+            select 1 
+            from temp_table_graphs_imports
+            where walkthrough_id = l_walkthrough_id
+            and height = l_height + 1
+        ) then 
+            -- no now element inserted, just stop 
+            exit;
+        else
+            select l_height + 1 into l_height ;
+        end if;
     end loop;
 
     return query 
