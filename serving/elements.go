@@ -45,3 +45,25 @@ func upsertElementInGraphHandler(wrapper ServiceParameters, w http.ResponseWrite
 	w.WriteHeader(200)
 	return nil
 }
+
+// deleteElementHandler deletes an element in the graph
+func deleteElementHandler(wrapper ServiceParameters, w http.ResponseWriter, r *http.Request) error {
+	defer r.Body.Close()
+
+	user, auth := wrapper.CurrentUser()
+	if !auth {
+		return NewServiceForbiddenError("should authenticate")
+	}
+
+	elementId := r.PathValue("elementId")
+	if len(elementId) == 0 {
+		return NewServiceHttpClientError("expecting element id")
+	}
+
+	if err := wrapper.Dao.DeleteElement(wrapper.Ctx, user, elementId); err != nil {
+		return NewServiceInternalServerError(err.Error())
+	}
+
+	w.WriteHeader(200)
+	return nil
+}

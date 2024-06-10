@@ -44,6 +44,28 @@ func createGraphHandler(wrapper ServiceParameters, w http.ResponseWriter, r *htt
 	return errResponse
 }
 
+// upsertElementInGraphHandler loads an element dto and then saves it to database
+func deleteGraphHandler(wrapper ServiceParameters, w http.ResponseWriter, r *http.Request) error {
+	defer r.Body.Close()
+
+	user, auth := wrapper.CurrentUser()
+	if !auth {
+		return NewServiceForbiddenError("should authenticate")
+	}
+
+	graphId := r.PathValue("graphId")
+	if len(graphId) == 0 {
+		return NewServiceHttpClientError("expecting graph id")
+	}
+
+	if err := wrapper.Dao.DeleteGraph(wrapper.Ctx, user, graphId); err != nil {
+		return NewServiceInternalServerError(err.Error())
+	}
+
+	w.WriteHeader(200)
+	return nil
+}
+
 // listGraphHandler displays graphs available to an user
 func listGraphHandler(wrapper ServiceParameters, w http.ResponseWriter, r *http.Request) error {
 	defer r.Body.Close()

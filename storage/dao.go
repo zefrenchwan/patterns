@@ -240,6 +240,52 @@ func (d *Dao) ListGraphsForUser(ctx context.Context, user string) ([]AuthGraphDT
 	return result, globalErr
 }
 
+// DeleteElement deletes an element from an user. May raise error on auth
+func (d *Dao) DeleteElement(ctx context.Context, user, elementId string) error {
+	if d == nil || d.pool == nil {
+		return errors.New("nil value")
+	}
+
+	transaction, errTransaction := d.pool.Begin(ctx)
+	if errTransaction != nil {
+		return errTransaction
+	}
+
+	if _, err := transaction.Exec(ctx, "call susers.delete_element($1, $2)", user, elementId); err != nil {
+		return transaction.Rollback(ctx)
+	} else {
+		if errCommit := transaction.Commit(ctx); errCommit != nil {
+			transaction.Rollback(ctx)
+			return errCommit
+		} else {
+			return nil
+		}
+	}
+}
+
+// DeleteGraph deletes an element from an user. May raise error on auth
+func (d *Dao) DeleteGraph(ctx context.Context, user, graphId string) error {
+	if d == nil || d.pool == nil {
+		return errors.New("nil value")
+	}
+
+	transaction, errTransaction := d.pool.Begin(ctx)
+	if errTransaction != nil {
+		return errTransaction
+	}
+
+	if _, err := transaction.Exec(ctx, "call susers.delete_graph($1, $2)", user, graphId); err != nil {
+		return transaction.Rollback(ctx)
+	} else {
+		if errCommit := transaction.Commit(ctx); errCommit != nil {
+			transaction.Rollback(ctx)
+			return errCommit
+		} else {
+			return nil
+		}
+	}
+}
+
 // LoadGraphForUser loads a graph and dependencies given base id for a given user
 func (d *Dao) LoadGraphForUser(ctx context.Context, user string, graphId string) (graphs.Graph, error) {
 	var empty graphs.Graph

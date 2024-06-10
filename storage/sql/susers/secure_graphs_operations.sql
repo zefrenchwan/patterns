@@ -524,3 +524,81 @@ begin
 end;$$;
 
 alter procedure susers.upsert_links owner to upa;
+
+-- susers.delete_element deletes an element if it does not appear in a relation as a parameter
+create or replace procedure susers.delete_element(p_user_login text, p_element_id text)
+language plpgsql as $$
+declare 
+	l_graph_id text;
+begin 
+	select ELT.graph_id into l_graph_id 
+	from sgraphs.elements ELT 
+	where ELT.element_id = p_element_id;
+
+	if l_graph_id is null then 
+		-- no element, no action 
+		return;
+	end if;
+
+	-- user may not modify graph 
+	call susers.accept_any_user_access_to_resource_or_raise(p_user_login, 'graph', ARRAY['modifier'], l_graph_id);
+
+	if exists (
+		select 1
+		from sgraphs.relation_role
+		where p_element_id = ANY(role_values)
+	) then 
+		raise exception 'a relation depends on current element to delete';
+	end if;
+
+	-- ok to delete 
+	delete from sgraphs.relation_role where relation_id = p_element_id;
+	delete from sgraphs.entity_attributes where entity_id = p_element_id;
+	delete from sgraphs.elements where element_id = p_element_id;
+end; $$;
+
+alter procedure susers.delete_element owner to upa;
+
+-- susers.delete_graph deletes a graph if no relation depends on an element within that graph
+create or replace procedure susers.delete_graph(p_user_login text, p_graph_id text)
+language plpgsql as $$
+declare 
+	l_counter int;
+	l_graph_id text;
+begin 
+	select GRA.graph_id into l_graph_id 
+	from sgraphs.graphs GRA 
+	where GRA.graph_id = p_graph_id;
+
+	if l_graph_id is null then 
+		-- no matching id, no action 
+		return;
+	end if;
+
+	-- user may not modify graph 
+	call susers.accept_any_user_access_to_resource_or_raise(p_user_login, 'graph', ARRAY['manager'], l_graph_id);
+
+	with all_sources as (
+		select ELT.element_id 
+		from sgraphs.elements ELT 
+		where ELT.graph_id = p_graph_id
+	), all_external_operands as (
+		select unnest(role_values) as role_operands  
+		from sgraphs.relation_role RRO
+        join sgraphs.elements ELT on ELT.element_id = RRO.relation_id
+        where ELT.graph_id <> l_graph_id
+	), all_dependencies as (
+		select count(*) as counter
+		from all_external_operands ALO 
+		join all_sources ALS on ALO.role_operands = ALS.element_id
+	) select counter into l_counter from all_dependencies;
+		
+	if l_counter > 0 then 
+		raise exception 'a relation outside the graph depends on an element in the graph';
+	end if;
+
+	-- ok to delete 
+	delete from sgraphs.elements where graph_id = p_graph_id;
+end; $$;
+
+alter procedure susers.delete_graph owner to upa;
