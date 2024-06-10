@@ -393,9 +393,11 @@ begin
     ), all_relations as (
         select RRO.relation_id, 
         RRO.role_in_relation, 
-        RRO.role_values
+        array_agg(RRV.relation_value) as role_values
         from sgraphs.relation_role RRO
         join all_source_elements ASE on ASE.element_id = RRO.relation_id
+        join sgraphs.relation_role_values RRV on RRV.relation_role_id = RRO.relation_role_id
+        group by RRO.relation_id, RRO.role_in_relation 
     ), all_expanded_relations as (
         select ALR.relation_id, 
         unnest(ALR.role_values) as role_value 
@@ -545,8 +547,8 @@ begin
 
 	if exists (
 		select 1
-		from sgraphs.relation_role
-		where p_element_id = ANY(role_values)
+		from sgraphs.relation_role_values RRV
+		where p_element_id = RRV.relation_value
 	) then 
 		raise exception 'a relation depends on current element to delete';
 	end if;
@@ -583,9 +585,10 @@ begin
 		from sgraphs.elements ELT 
 		where ELT.graph_id = p_graph_id
 	), all_external_operands as (
-		select unnest(role_values) as role_operands  
+		select RRV.relation_value as role_operands  
 		from sgraphs.relation_role RRO
         join sgraphs.elements ELT on ELT.element_id = RRO.relation_id
+        join sgraphs.relation_role_values RRV on RRV.relation_role_id = RRO.relation_role_id 
         where ELT.graph_id <> l_graph_id
 	), all_dependencies as (
 		select count(*) as counter

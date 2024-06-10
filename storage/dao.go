@@ -449,6 +449,7 @@ func (d *Dao) LoadGraphForUser(ctx context.Context, user string, graphId string)
 		}
 
 		if attributeKey == "" {
+			previousId = elementId
 			continue
 		}
 		// add current information to current element
@@ -529,12 +530,6 @@ func (d *Dao) LoadGraphForUser(ctx context.Context, user string, graphId string)
 			traits = mapAnyToStringSlice(rawRelation[4])
 		}
 
-		if previousId == "" {
-			newRelation := nodes.NewUnlinkedRelationWithId(elementId, traits)
-			currentRelation = &newRelation
-			currentRelation.SetActivePeriod(activity)
-		}
-
 		var equivalenceClass []string
 		var equivalenceClassGraph []string
 		if rawRelation[5] != nil {
@@ -561,8 +556,6 @@ func (d *Dao) LoadGraphForUser(ctx context.Context, user string, graphId string)
 			continue
 		}
 
-		currentRelation.SetValuesForRole(roleName, roleValues)
-
 		localEquivalenceClassGraph = nil
 		localEquivalenceClassGraph = make(map[string]string)
 		size := len(equivalenceClassGraph)
@@ -570,16 +563,23 @@ func (d *Dao) LoadGraphForUser(ctx context.Context, user string, graphId string)
 			localEquivalenceClassGraph[equivalenceClass[index]] = equivalenceClassGraph[index]
 		}
 
-		// OK, now update the element
-		if previousId != "" && elementId != previousId {
+		if previousId == "" {
+			newRelation := nodes.NewUnlinkedRelationWithId(elementId, traits)
+			currentRelation = &newRelation
+			currentRelation.SetActivePeriod(activity)
+		} else if previousId != "" && elementId != previousId {
 			// previous value is complete, now insert
 			result.SetElement(currentRelation, currentGraphId, currentGraphEditable, localEquivalenceClassGraph)
 			// make new element
-			currentValue, _ := nodes.NewEntityWithId(elementId, traits, activity)
-			currentEntity = &currentValue
+			newRelation := nodes.NewUnlinkedRelationWithId(elementId, traits)
+			currentRelation = &newRelation
+			currentRelation.SetActivePeriod(activity)
 		}
 
-		// then, set value for previousId just before going to previous element
+		// anyway, set current value
+		currentRelation.SetValuesForRole(roleName, roleValues)
+
+		// And finally: set value for previousId just before going to previous element
 		previousId = elementId
 	}
 

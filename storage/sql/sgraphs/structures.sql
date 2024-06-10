@@ -99,11 +99,17 @@ alter table sgraphs.entity_attributes owner to upa;
 create table sgraphs.relation_role (
 	relation_role_id bigserial primary key, 
 	relation_id text references sgraphs.elements(element_id) on delete cascade,
-	role_in_relation text not null, 
-	role_values text[]
+	role_in_relation text not null
 );
 
 alter table sgraphs.relation_role owner to upa;
+
+create table sgraphs.relation_role_values (
+	relation_role_id bigint not null references sgraphs.relation_role(relation_role_id) on delete cascade,
+	relation_value text not null references sgraphs.elements (element_id) on delete cascade
+); 
+
+alter table sgraphs.relation_role_values owner to upa;
 
 -------------------------------------
 -- INCLUSIONS AND NODES DEFINITION --

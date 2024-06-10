@@ -252,6 +252,7 @@ language plpgsql as $$
 declare
 begin
 	delete from sgraphs.entity_attributes where entity_id = p_element_id;
+	-- the on delete cascade will also clean the relation_role_values data 
 	delete from sgraphs.relation_role where relation_id = p_element_id;
 end; $$;
 
@@ -309,6 +310,7 @@ language plpgsql as $$
 declare 
 	l_element text;
 	l_type int;
+	l_new_role_id bigint;
 begin 
 
 	if not exists (select 1 from sgraphs.elements where element_id = p_id) then 
@@ -334,8 +336,11 @@ begin
 	delete from sgraphs.relation_role 
 	where relation_id = p_id and role_in_relation = p_role;
 
-	insert into sgraphs.relation_role(relation_id, role_in_relation, role_values)
-	select p_id, p_role, p_values;
+	insert into sgraphs.relation_role(relation_id, role_in_relation)
+	select p_id, p_role returning relation_role_id into l_new_role_id;
+
+	insert into sgraphs.relation_role_values(relation_role_id, relation_value)
+	select l_new_role_id, unnest(p_values);
 
 end; $$;
 
