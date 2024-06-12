@@ -342,7 +342,6 @@ func (d *Dao) LoadGraphForUser(ctx context.Context, user string, graphId string)
 
 	// globalErr is nil, proceed to entities
 	// STEP TWO: ENTITIES
-
 	// Database contract is:
 	// susers.transitive_load_entities_in_graph(p_user_login text, p_id text)
 	// returns table (
@@ -350,41 +349,32 @@ func (d *Dao) LoadGraphForUser(ctx context.Context, user string, graphId string)
 	// element_id text, activity text, traits text[],
 	// equivalence_class text[], equivalence_class_graph text[],
 	// attribute_key text, attribute_values text[], attribute_periods text[]
-	const queryEntities = "select * from susers.transitive_load_entities_in_graph($1, $2) order by element_id asc"
-	rows, errEntities := d.pool.Query(ctx, queryEntities, user, graphId)
+	const queryEntities = "select * from susers.transitive_load_entities_in_graph($1, $2) order by element_id, attribute_key asc"
+	rowsEntities, errEntities := d.pool.Query(ctx, queryEntities, user, graphId)
 	if errEntities != nil {
 		return empty, errEntities
 	}
 
-	// due to the order by element_id, we may load elements one by one and not keep the map of partial loaded elements
-	var previousId string
-	var currentGraphId string
-	var currentGraphEditable bool
-	var currentEntity nodes.FormalInstance
-	var localEquivalenceClassGraph map[string]string
-
-	for rows.Next() {
+	for rowsEntities.Next() {
 		// read data from current line
 		var rawEntityAttr []any
-		if rawLine, errAttr := rows.Values(); errAttr != nil {
+		if rawLine, errAttr := rowsEntities.Values(); errAttr != nil {
 			globalErr = errors.Join(globalErr, errAttr)
 			continue
 		} else {
 			rawEntityAttr = rawLine
 		}
 
-		currentGraphId = rawEntityAttr[0].(string)
-		currentGraphEditable = rawEntityAttr[1].(bool)
+		currentGraphId := rawEntityAttr[0].(string)
+		currentGraphEditable := rawEntityAttr[1].(bool)
 		elementId := rawEntityAttr[2].(string)
 		activity := nodes.NewEmptyPeriod()
 		if rawEntityAttr[3] != nil {
 			if a, err := deserializePeriod(rawEntityAttr[3].(string)); err != nil {
 				globalErr = errors.Join(globalErr, err)
-				previousId = elementId
 				continue
 			} else if a.IsEmptyPeriod() {
 				globalErr = errors.Join(globalErr, errors.New("empty period for element"))
-				previousId = elementId
 				continue
 			} else {
 				activity = a
@@ -394,17 +384,6 @@ func (d *Dao) LoadGraphForUser(ctx context.Context, user string, graphId string)
 		var traits []string
 		if rawEntityAttr[4] != nil {
 			traits = mapAnyToStringSlice(rawEntityAttr[4])
-		}
-
-		if previousId == "" {
-			newEntity, errCreate := nodes.NewEntityWithId(elementId, traits, activity)
-			if errCreate != nil {
-				globalErr = errors.Join(globalErr, errCreate)
-				previousId = elementId
-				continue
-			} else {
-				currentEntity = &newEntity
-			}
 		}
 
 		var equivalenceClass []string
@@ -419,7 +398,7 @@ func (d *Dao) LoadGraphForUser(ctx context.Context, user string, graphId string)
 
 		var attributeKey string
 		var attributeValues []string
-		var attributePeriods []string
+		var attributePeriodValues []string
 		if rawEntityAttr[7] != nil {
 			attributeKey = rawEntityAttr[7].(string)
 		}
@@ -429,48 +408,35 @@ func (d *Dao) LoadGraphForUser(ctx context.Context, user string, graphId string)
 		}
 
 		if rawEntityAttr[9] != nil {
-			attributePeriods = mapAnyToStringSlice(rawEntityAttr[9])
+			attributePeriodValues = mapAnyToStringSlice(rawEntityAttr[9])
 		}
 
-		localEquivalenceClassGraph = nil
-		localEquivalenceClassGraph = make(map[string]string)
+		localEquivalenceClassGraph := make(map[string]string)
 		size := len(equivalenceClassGraph)
 		for index := 0; index < size; index++ {
 			localEquivalenceClassGraph[equivalenceClass[index]] = equivalenceClassGraph[index]
 		}
 
-		// OK, now update the element
-		if previousId != "" && elementId != previousId {
-			// previous value is complete, now insert
-			result.SetElement(currentEntity, currentGraphId, currentGraphEditable, localEquivalenceClassGraph)
-			// make new element
-			currentValue, _ := nodes.NewEntityWithId(elementId, traits, activity)
-			currentEntity = &currentValue
+		periodsError := false
+		sizePeriodValues := len(attributePeriodValues)
+		attributePeriods := make([]nodes.Period, sizePeriodValues)
+		for index, periodValue := range attributePeriodValues {
+			if newPeriod, err := deserializePeriod(periodValue); err != nil {
+				globalErr = errors.Join(globalErr, err)
+				periodsError = true
+			} else {
+				attributePeriods[index] = newPeriod
+			}
 		}
 
-		if attributeKey == "" {
-			previousId = elementId
+		if periodsError {
 			continue
 		}
-		// add current information to current element
-		attrSize := len(attributeValues)
-		for index := 0; index < attrSize; index++ {
-			period, errPeriod := deserializePeriod(attributePeriods[index])
-			if errPeriod != nil {
-				globalErr = errors.Join(globalErr, errPeriod)
-				previousId = elementId
-				continue
-			}
 
-			currentEntity.AddValue(attributeKey, attributeValues[index], period)
-		}
-
-		// then, set value for previousId just before going to previous element
-		previousId = elementId
+		result.AddToFormalInstance(currentGraphId, currentGraphEditable, localEquivalenceClassGraph,
+			elementId, traits, activity, attributeKey, attributeValues, attributePeriods,
+		)
 	}
-
-	// set last value. Either it did not exist and is saved, or it is just resaved
-	result.SetElement(currentEntity, currentGraphId, currentGraphEditable, localEquivalenceClassGraph)
 
 	if globalErr != nil {
 		return empty, globalErr
@@ -478,9 +444,7 @@ func (d *Dao) LoadGraphForUser(ctx context.Context, user string, graphId string)
 
 	// globalErr is nil, proceed to relations
 	// STEP THREE: RELATIONS
-	localEquivalenceClassGraph = nil
-	localEquivalenceClassGraph = make(map[string]string)
-	previousId = ""
+
 	// database contract is:
 	// create or replace function susers.transitive_load_relations_in_graph(p_user_login text, p_id text)
 	// returns table (
@@ -490,35 +454,32 @@ func (d *Dao) LoadGraphForUser(ctx context.Context, user string, graphId string)
 	// 	role_in_relation text, role_values text[]
 	// )
 
-	var currentRelation nodes.FormalRelation
 	const queryRelations = "select * from susers.transitive_load_relations_in_graph($1, $2) order by element_id asc"
-	rows, errRelation := d.pool.Query(ctx, queryRelations, user, graphId)
+	rowsRelation, errRelation := d.pool.Query(ctx, queryRelations, user, graphId)
 	if errRelation != nil {
 		return empty, errEntities
 	}
 
-	for rows.Next() {
+	for rowsRelation.Next() {
 		// read data from current line
 		var rawRelation []any
-		if rawLine, errAttr := rows.Values(); errAttr != nil {
+		if rawLine, errAttr := rowsRelation.Values(); errAttr != nil {
 			globalErr = errors.Join(globalErr, errAttr)
 			continue
 		} else {
 			rawRelation = rawLine
 		}
 
-		currentGraphId = rawRelation[0].(string)
-		currentGraphEditable = rawRelation[1].(bool)
+		currentGraphId := rawRelation[0].(string)
+		currentGraphEditable := rawRelation[1].(bool)
 		elementId := rawRelation[2].(string)
 		activity := nodes.NewEmptyPeriod()
 		if rawRelation[3] != nil {
 			if a, err := deserializePeriod(rawRelation[3].(string)); err != nil {
 				globalErr = errors.Join(globalErr, err)
-				previousId = elementId
 				continue
 			} else if a.IsEmptyPeriod() {
 				globalErr = errors.Join(globalErr, errors.New("empty period for element"))
-				previousId = elementId
 				continue
 			} else {
 				activity = a
@@ -552,39 +513,19 @@ func (d *Dao) LoadGraphForUser(ctx context.Context, user string, graphId string)
 
 		if len(roleValues) == 0 {
 			globalErr = errors.Join(globalErr, errors.New("no value for a role in relation"))
-			previousId = elementId
 			continue
 		}
 
-		localEquivalenceClassGraph = nil
-		localEquivalenceClassGraph = make(map[string]string)
+		localEquivalenceClassGraph := make(map[string]string)
 		size := len(equivalenceClassGraph)
 		for index := 0; index < size; index++ {
 			localEquivalenceClassGraph[equivalenceClass[index]] = equivalenceClassGraph[index]
 		}
 
-		if previousId == "" {
-			newRelation := nodes.NewUnlinkedRelationWithId(elementId, traits)
-			currentRelation = &newRelation
-			currentRelation.SetActivePeriod(activity)
-		} else if previousId != "" && elementId != previousId {
-			// previous value is complete, now insert
-			result.SetElement(currentRelation, currentGraphId, currentGraphEditable, localEquivalenceClassGraph)
-			// make new element
-			newRelation := nodes.NewUnlinkedRelationWithId(elementId, traits)
-			currentRelation = &newRelation
-			currentRelation.SetActivePeriod(activity)
-		}
-
-		// anyway, set current value
-		currentRelation.SetValuesForRole(roleName, roleValues)
-
-		// And finally: set value for previousId just before going to previous element
-		previousId = elementId
+		result.AddToFormalRelation(currentGraphId, currentGraphEditable, localEquivalenceClassGraph,
+			elementId, traits, activity, roleName, roleValues,
+		)
 	}
-
-	// set last value. Either it did not exist and is saved, or it is just resaved
-	result.SetElement(currentRelation, currentGraphId, currentGraphEditable, localEquivalenceClassGraph)
 
 	if globalErr != nil {
 		return empty, globalErr

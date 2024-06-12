@@ -87,6 +87,86 @@ func (g *Graph) MarkExistingElementAsDirty(currentElement nodes.Element) error {
 	return nil
 }
 
+func (g *Graph) AddToFormalInstance(
+	graphId string, editable bool, equivalenceClassByGaph map[string]string,
+	elementId string, traits []string, activity nodes.Period,
+	attributeName string, attributeValues []string, attributePeriods []nodes.Period,
+) error {
+	if g == nil {
+		return nil
+	}
+
+	node := Node{
+		EquivalenceClass: equivalenceClassByGaph,
+		SourceGraph:      graphId,
+		Editable:         editable,
+	}
+
+	var entity nodes.FormalInstance
+	if previousNode, found := g.values[elementId]; !found {
+		if entityValue, errEntity := nodes.NewEntityWithId(elementId, traits, activity); errEntity != nil {
+			return errEntity
+		} else {
+			entity = &entityValue
+		}
+	} else if instance, ok := previousNode.Value.(nodes.FormalInstance); !ok {
+		return errors.New("element was a relation, now an instance")
+	} else {
+		entity = instance
+	}
+
+	size := len(attributeValues)
+	if len(attributePeriods) != size {
+		return errors.New("periods and values for attribute do not match")
+	}
+
+	for index := 0; index < size; index++ {
+		entity.AddValue(attributeName, attributeValues[index], attributePeriods[index])
+	}
+
+	node.Value = entity
+	g.values[elementId] = node
+
+	return nil
+}
+
+func (g *Graph) AddToFormalRelation(
+	graphId string, editable bool, equivalenceClassByGaph map[string]string,
+	elementId string, traits []string, activity nodes.Period,
+	roleName string, roleValues []string,
+) error {
+	if g == nil {
+		return nil
+	}
+
+	node := Node{
+		EquivalenceClass: equivalenceClassByGaph,
+		SourceGraph:      graphId,
+		Editable:         editable,
+	}
+
+	var relation nodes.FormalRelation
+	if previousNode, found := g.values[elementId]; !found {
+		relationValue := nodes.NewUnlinkedRelationWithId(elementId, traits)
+		relation = &relationValue
+		if err := relation.SetActivePeriod(activity); err != nil {
+			return err
+		}
+	} else if previousRelation, ok := previousNode.Value.(nodes.FormalRelation); !ok {
+		return errors.New("element was a relation, now an instance")
+	} else {
+		relation = previousRelation
+	}
+
+	if err := relation.SetValuesForRole(roleName, roleValues); err != nil {
+		return err
+	} else {
+		node.Value = relation
+		g.values[elementId] = node
+		return nil
+	}
+}
+
 // SetElement set values (overwrites a previous one if any) for a given element
 func (g *Graph) SetElement(currentElement nodes.Element, sourceGraph string, editable bool, equivalenceClassByGaph map[string]string) {
 	if g == nil || currentElement == nil {
