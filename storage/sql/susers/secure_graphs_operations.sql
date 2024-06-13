@@ -527,6 +527,76 @@ end;$$;
 
 alter procedure susers.upsert_links owner to upa;
 
+create or replace function susers.load_element_by_id(p_user_login text, p_element_id text)
+returns table (
+	element_id text,
+	traits text[], activity text,
+	role_name text, role_values text[], 
+	attribute_name text, attribute_values text[], attribute_periods text[]) 
+language plpgsql as $$
+declare 
+	l_element_type int;
+	l_graph_id text;
+begin
+	
+select GRA.graph_id into l_graph_id 
+from sgraphs.elements ELT 
+join sgraphs.graphs GRA on ELT.graph_id = GRA.graph_id;
+
+if l_graph_id is null then 
+    -- just returns empty
+	return query select null, null, null, null, null, null, null, null where 1 <> 1;
+    return;
+end if;
+
+call susers.accept_any_user_access_to_resource_or_raise(p_user_login, 'graph', ARRAY['modifier','observer'], l_graph_id);
+
+return query
+with element_data as (
+	select ELT.element_id,
+	array_agg(TRA.trait) as traits,
+ 	max(sgraphs.serialize_period(PER.period_full, false, PER.period_value)) as activity  
+	from sgraphs.elements ELT 
+	join sgraphs.periods PER on PER.period_id = ELT.element_period
+	join sgraphs.element_trait ETR on ETR.element_id = ELT.element_id
+	join sgraphs.traits TRA on TRA.trait_id = ETR.trait_id
+	where ELT.element_id = p_element_id
+	group by ELT.element_id
+), element_roles as (
+	select RRO.relation_id as element_id, 
+	RRO.role_in_relation as role_name , 
+	array_agg(RRV.relation_value order by RRV.relation_value) as role_values 
+	from sgraphs.relation_role RRO 
+	join sgraphs.relation_role_values RRV on RRO.relation_role_id = RRV.relation_role_id
+	where RRO.relation_id = p_element_id
+	group by RRO.relation_id, RRO.role_in_relation
+), element_entity as (
+	select ENA.entity_id as element_id,
+	ENA.attribute_name, 
+	array_agg(ENA.attribute_value order by ENA.attribute_id) as attribute_values,  
+	array_agg(sgraphs.serialize_period(PER.period_full, false, PER.period_value) order by ENA.attribute_id) as attribute_periods
+	from sgraphs.entity_attributes ENA 
+	join sgraphs.periods PER on PER.period_id = ENA.period_id
+	where not PER.period_empty
+	and ENA.entity_id = p_element_id
+	group by ENA.entity_id, ENA.attribute_name
+)
+select 
+EDA.element_id,
+EDA.traits,	
+EDA.activity,
+ERO.role_name,
+ERO.role_values,
+ELE.attribute_name, 
+ELE.attribute_values, 
+ELE.attribute_periods
+from element_data EDA 
+left outer join element_roles ERO on ERO.element_id = EDA.element_id 
+left outer join element_entity ELE on ELE.element_id = EDA.element_id;
+end;$$;
+
+alter function susers.load_element_by_id owner to upa;
+
 -- susers.delete_element deletes an element if it does not appear in a relation as a parameter
 create or replace procedure susers.delete_element(p_user_login text, p_element_id text)
 language plpgsql as $$

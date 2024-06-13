@@ -105,7 +105,13 @@ func loadGraphHandler(wrapper ServiceParameters, w http.ResponseWriter, r *http.
 		rawGraph = raw
 	}
 
-	dto := storage.SerializeFullGraph(&rawGraph)
-	json.NewEncoder(w).Encode(dto)
+	switch rawGraph.Id {
+	case "":
+		w.WriteHeader(404)
+	default:
+		dto := storage.SerializeFullGraph(&rawGraph)
+		json.NewEncoder(w).Encode(dto)
+	}
+
 	return nil
 }

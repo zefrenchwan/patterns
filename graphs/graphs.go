@@ -87,6 +87,7 @@ func (g *Graph) MarkExistingElementAsDirty(currentElement nodes.Element) error {
 	return nil
 }
 
+// AddToFormalInstance adds the instance if not exists already, or updates it
 func (g *Graph) AddToFormalInstance(
 	graphId string, editable bool, equivalenceClassByGaph map[string]string,
 	elementId string, traits []string, activity nodes.Period,
@@ -130,6 +131,7 @@ func (g *Graph) AddToFormalInstance(
 	return nil
 }
 
+// AddToFormalRelation adds the relation if not exists already, or updates it
 func (g *Graph) AddToFormalRelation(
 	graphId string, editable bool, equivalenceClassByGaph map[string]string,
 	elementId string, traits []string, activity nodes.Period,

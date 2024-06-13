@@ -9,6 +9,33 @@ import (
 	"github.com/zefrenchwan/patterns.git/storage"
 )
 
+// loadElementByIdHandler loads an element by id and returns matching JSON
+func loadElementByIdHandler(wrapper ServiceParameters, w http.ResponseWriter, r *http.Request) error {
+	defer r.Body.Close()
+
+	user, auth := wrapper.CurrentUser()
+	if !auth {
+		return NewServiceForbiddenError("should authenticate")
+	}
+
+	elementId := r.PathValue("elementId")
+	if len(elementId) == 0 {
+		return NewServiceHttpClientError("expecting element id")
+	}
+
+	element, errLoad := wrapper.Dao.LoadElementForUser(wrapper.Ctx, user, elementId)
+	if errLoad != nil {
+		return BuildApiErrorFromStorageError(errLoad)
+	} else if element == nil {
+		w.WriteHeader(404)
+		return nil
+	} else {
+		response := storage.SerializeElement(element)
+		json.NewEncoder(w).Encode(response)
+		return nil
+	}
+}
+
 // upsertElementInGraphHandler loads an element dto and then saves it to database
 func upsertElementInGraphHandler(wrapper ServiceParameters, w http.ResponseWriter, r *http.Request) error {
 	defer r.Body.Close()

@@ -286,6 +286,118 @@ func (d *Dao) DeleteGraph(ctx context.Context, user, graphId string) error {
 	}
 }
 
+// LoadElementForUser returns an element, if any, matching that id
+func (d *Dao) LoadElementForUser(ctx context.Context, user string, elementId string) (nodes.Element, error) {
+	if d == nil || d.pool == nil {
+		return nil, errors.New("nil value")
+	}
+
+	rows, errLoad := d.pool.Query(ctx, "select * from susers.load_element_by_id($1, $2)", user, elementId)
+	if errLoad != nil {
+		return nil, errLoad
+	}
+
+	var entity nodes.FormalInstance
+	var relation nodes.FormalRelation
+	var elementType = -1
+
+	var globalErr error
+	for rows.Next() {
+
+		var rawValues []any
+		if rawData, err := rows.Values(); err != nil {
+			globalErr = errors.Join(globalErr, err)
+			continue
+		} else {
+			rawValues = rawData
+		}
+
+		id := rawValues[0].(string)
+		traits := mapAnyToStringSlice(rawValues[1])
+		activity, errActivity := deserializePeriod(rawValues[2].(string))
+		if errActivity != nil {
+			globalErr = errors.Join(globalErr, errActivity)
+			continue
+		}
+
+		var roleName string
+		switch rawValues[3] {
+		case nil:
+			if elementType < 0 {
+				elementType = 1
+
+			}
+		default:
+			roleName = rawValues[3].(string)
+			if elementType < 0 {
+				elementType = 2
+			}
+		}
+
+		roleValues := mapAnyToStringSlice(rawValues[4])
+
+		var attributeName string
+		var attributeValues []string
+		var attributePeriods []nodes.Period
+
+		if elementType == 1 {
+			attributeName = rawValues[5].(string)
+			attributeValues = mapAnyToStringSlice(rawValues[6])
+			rawPeriods := mapAnyToStringSlice(rawValues[7])
+			for _, rawPeriod := range rawPeriods {
+				if period, err := deserializePeriod(rawPeriod); err == nil {
+					attributePeriods = append(attributePeriods, period)
+				} else {
+					globalErr = errors.Join(globalErr, err)
+					continue
+				}
+			}
+
+			if len(attributePeriods) != len(attributeValues) {
+				globalErr = errors.Join(globalErr, errors.New("invalid attributes request: size mismatch"))
+				break
+			}
+		}
+
+		switch elementType {
+		case 1:
+			if entity == nil {
+				if newEntity, errEntity := nodes.NewEntityWithId(id, traits, activity); errEntity != nil {
+					return nil, errors.Join(globalErr, errEntity)
+				} else {
+					entity = &newEntity
+				}
+			}
+
+			for index := 0; index < len(attributeValues); index++ {
+				entity.AddValue(attributeName, attributeValues[index], attributePeriods[index])
+			}
+		case 2:
+			if relation == nil {
+				relationValue := nodes.NewUnlinkedRelationWithId(id, traits)
+				relation = &relationValue
+			}
+
+			relation.SetValuesForRole(roleName, roleValues)
+		default:
+			return nil, errors.New("mixed types not implemented")
+		}
+	}
+
+	if globalErr != nil {
+		return nil, globalErr
+	}
+
+	switch elementType {
+	case 1:
+		return entity, nil
+	case 2:
+		return relation, nil
+	default:
+		return nil, errors.New("mixed types not implemented")
+	}
+}
+
 // LoadGraphForUser loads a graph and dependencies given base id for a given user
 func (d *Dao) LoadGraphForUser(ctx context.Context, user string, graphId string) (graphs.Graph, error) {
 	var empty graphs.Graph
