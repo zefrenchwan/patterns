@@ -675,3 +675,38 @@ begin
 end; $$;
 
 alter procedure susers.delete_graph owner to upa;
+
+-- susers.clear_graphs clear all data in graphs schema.
+create or replace procedure susers.clear_graphs(p_user_login text)
+language plpgsql as $$
+declare
+	l_auth bool;
+begin
+	
+with aggregated_roles_over_graphs as (
+	select array_agg(ROL.role_name) as active_roles
+	from susers.roles ROL
+	join susers.authorizations AUT on AUT.auth_role_id = ROL.role_id
+	join susers.classes CLA on CLA.class_id = AUT.auth_class_id
+	join susers.users USR on USR.user_id = AUT.auth_user_id
+	where AUT.auth_active
+	and USR.user_active
+	and CLA.class_name = 'graph'
+	and AUT.auth_resource is null
+	and USR.user_login = p_user_login
+)
+select ARRAY['modifier','manager']  <@ AROG.active_roles into l_auth
+from aggregated_roles_over_graphs AROG;
+
+if l_auth is null or not l_auth then 
+	raise exception 'auth failure: cannot clear graphs';
+end if;
+
+delete from sgraphs.element_trait;
+delete from sgraphs.elements;
+delete from sgraphs.graphs;
+delete from sgraphs.traits;
+
+end; $$;
+
+alter procedure susers.clear_graphs owner to upa;

@@ -115,3 +115,21 @@ func loadGraphHandler(wrapper ServiceParameters, w http.ResponseWriter, r *http.
 
 	return nil
 }
+
+// clearGraphsHandler clears all data about graphs (for test database)
+func clearGraphsHandler(wrapper ServiceParameters, w http.ResponseWriter, r *http.Request) error {
+	defer r.Body.Close()
+
+	user, auth := wrapper.CurrentUser()
+	if !auth {
+		return NewServiceForbiddenError("should authenticate")
+	}
+
+	errClear := wrapper.Dao.ClearGraph(wrapper.Ctx, user)
+	if errClear != nil {
+		return BuildApiErrorFromStorageError(errClear)
+	}
+
+	w.WriteHeader(200)
+	return nil
+}

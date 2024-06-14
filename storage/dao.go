@@ -186,12 +186,10 @@ func (d *Dao) ListGraphsForUser(ctx context.Context, user string) ([]AuthGraphDT
 	}
 
 	defer rows.Close()
-	var currentData AuthGraphDTO
-	inserted := false
 	var globalErr error
+	values := make(map[string]AuthGraphDTO)
 
 	for rows.Next() {
-		inserted = false
 		// expecting
 		//  graph_id text, graph_roles text[],
 		// graph_name text, graph_description text,
@@ -204,37 +202,29 @@ func (d *Dao) ListGraphsForUser(ctx context.Context, user string) ([]AuthGraphDT
 		}
 
 		graphId := rawData[0].(string)
-		if currentData.Id != "" && graphId != currentData.Id {
-			result = append(result, currentData)
-			currentData = AuthGraphDTO{}
-			inserted = true
-		}
 
-		currentData.Id = graphId
-		currentData.Name = rawData[2].(string)
-		currentData.Roles = mapAnyToStringSlice(rawData[1])
-		if rawData[3] != nil {
-			currentData.Description = rawData[3].(string)
-		}
-
-		if rawData[4] == nil {
-			continue
-		} else if currentData.Metadata == nil {
+		currentData, found := values[graphId]
+		if !found {
+			currentData.Id = graphId
+			currentData.Name = rawData[2].(string)
+			currentData.Roles = mapAnyToStringSlice(rawData[1])
+			if rawData[3] != nil {
+				currentData.Description = rawData[3].(string)
+			}
 			currentData.Metadata = make(map[string][]string)
 		}
 
-		key := rawData[4].(string)
-		currentData.Metadata[key] = nil
-
-		if rawData[5] == nil {
-			continue
+		var key string
+		if rawData[4] != nil {
+			key = rawData[4].(string)
+			currentData.Metadata[key] = mapAnyToStringSlice(rawData[5])
 		}
 
-		currentData.Metadata[key] = mapAnyToStringSlice(rawData[5])
+		values[graphId] = currentData
 	}
 
-	if currentData.Id != "" && !inserted {
-		result = append(result, currentData)
+	for _, value := range values {
+		result = append(result, value)
 	}
 
 	return result, globalErr
@@ -750,6 +740,16 @@ func (d *Dao) UpsertElement(ctx context.Context, user string, graphId string, el
 
 	errCommit := transaction.Commit(ctx)
 	return errCommit
+}
+
+// ClearGraph clear the whole graphs schema
+func (d *Dao) ClearGraph(ctx context.Context, user string) error {
+	if d == nil || d.pool == nil {
+		return errors.New("nil value")
+	}
+
+	_, errExec := d.pool.Exec(ctx, "call susers.clear_graphs($1)", user)
+	return errExec
 }
 
 // Close closes the dao and the underlying pool
