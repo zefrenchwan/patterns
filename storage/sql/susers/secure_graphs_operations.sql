@@ -672,6 +672,7 @@ begin
 
 	-- ok to delete 
 	delete from sgraphs.elements where graph_id = p_graph_id;
+    delete from sgraphs.graphs where graph_id = p_graph_id;
 end; $$;
 
 alter procedure susers.delete_graph owner to upa;
