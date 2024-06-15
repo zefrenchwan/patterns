@@ -69,6 +69,98 @@ func TestEntitySerde(t *testing.T) {
 	}
 }
 
+func TestMultipleValuesPerAttributeSerde(t *testing.T) {
+	attribute_dto := storage.EntityValueDTO{
+		AttributeName:  "name",
+		AttributeValue: "value",
+		Periods:        []string{"[2021-01-01T00:00:00;+oo["},
+	}
+
+	other_attribute_dto := storage.EntityValueDTO{
+		AttributeName:  "name",
+		AttributeValue: "other value",
+		Periods:        []string{"]-oo;1999-01-01T00:00:00]"},
+	}
+
+	dto := storage.ElementDTO{
+		Id:         "id",
+		Traits:     []string{},
+		Activity:   []string{"]-oo;+oo["},
+		Attributes: []storage.EntityValueDTO{attribute_dto, other_attribute_dto},
+	}
+
+	element, errElement := storage.DeserializeElement(dto)
+	if errElement != nil {
+		t.Error(errElement.Error())
+	}
+
+	// specifically test if values were stored
+	instance, ok := element.(nodes.FormalInstance)
+	if !ok {
+		t.Fail()
+	}
+
+	if values, err := instance.PeriodValuesForAttribute("name"); err != nil {
+		t.Fail()
+	} else if len(values) != 2 {
+		t.Fail()
+	} else {
+		for value, period := range values {
+			switch value {
+			case "value":
+				if expectedValue, errValue := storage.DeserializePeriodForDTO(attribute_dto.Periods); errValue != nil {
+					t.Fail()
+				} else if !period.IsSameAs(expectedValue) {
+					t.Fail()
+				}
+			case "other value":
+				if expectedValue, errValue := storage.DeserializePeriodForDTO(other_attribute_dto.Periods); errValue != nil {
+					t.Fail()
+				} else if !period.IsSameAs(expectedValue) {
+					t.Fail()
+				}
+			default:
+				t.Fail()
+			}
+		}
+	}
+
+	// and then do it back
+	dto_back := storage.SerializeElement(element)
+	if dto.Id != dto_back.Id {
+		t.Fail()
+	} else if slices.Compare(dto.Traits, dto_back.Traits) != 0 {
+		t.Fail()
+	} else if slices.Compare(dto.Activity, dto_back.Activity) != 0 {
+		t.Fail()
+	} else if len(dto.Attributes) != len(dto_back.Attributes) {
+		t.Fail()
+	}
+
+	attr_value_back := dto_back.Attributes[0]
+	attr_other_value_back := dto_back.Attributes[1]
+	if attr_value_back.AttributeValue == "other value" {
+		attr_value_back = dto_back.Attributes[1]
+		attr_other_value_back = dto_back.Attributes[0]
+	}
+
+	if attribute_dto.AttributeName != attr_value_back.AttributeName {
+		t.Fail()
+	} else if attribute_dto.AttributeValue != attr_value_back.AttributeValue {
+		t.Fail()
+	} else if slices.Compare(attribute_dto.Periods, attr_value_back.Periods) != 0 {
+		t.Fail()
+	}
+
+	if other_attribute_dto.AttributeName != attr_other_value_back.AttributeName {
+		t.Fail()
+	} else if other_attribute_dto.AttributeValue != attr_other_value_back.AttributeValue {
+		t.Fail()
+	} else if slices.Compare(other_attribute_dto.Periods, attr_other_value_back.Periods) != 0 {
+		t.Fail()
+	}
+}
+
 func TestRelationSerde(t *testing.T) {
 	now := time.Now().UTC().Truncate(1 * time.Second)
 	leftInterval := nodes.NewLeftInfiniteTimeInterval(now, false)

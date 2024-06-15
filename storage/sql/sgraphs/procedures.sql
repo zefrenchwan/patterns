@@ -96,7 +96,7 @@ begin
 			l_period_left = l_period_parts[1];
 			l_period_right = l_period_parts[2];
 			-- If first non empty, set values. Else compare.
-			if found then 
+			if l_activity_found then 
 				-- if current value is already null, cannot do better.
 				-- Deal with min value 
 				if l_period_min is not null then 
@@ -268,17 +268,16 @@ declare
 	l_period_id bigint;
 	l_period text;
 	l_type int;
+	l_size int;
 begin 
-	if array_length(p_values, 1) <> array_length(p_periods, 1) then 
+	select array_length(p_values, 1) into l_size; 
+	if l_size <> array_length(p_periods, 1) then 
 		raise exception 'different sizes for periods and values' using errcode = '22023';
 	end if;
 
 	if not exists (select 1 from sgraphs.elements where element_id = p_id) then 
 		raise exception 'no match for entity %', p_id using errcode = 'P0002';
 	end if;
-
-	delete from sgraphs.entity_attributes 
-	where entity_id = p_id;
 
 	select element_type into l_type
 	from sgraphs.elements 
@@ -290,15 +289,17 @@ begin
 		where element_id = p_id;
 	end if;
 
-	l_index = 1; 
-	foreach l_value in array p_values loop 
+	delete from sgraphs.entity_attributes 
+	where entity_id = p_id
+	and attribute_name = p_name;
+
+	for l_index in 1.. l_size loop 
+		l_value = p_values[l_index];
 		l_period = p_periods[l_index];
 		call sgraphs.insert_period(l_period, l_period_id);
 
 		insert into sgraphs.entity_attributes(entity_id, attribute_name, attribute_value, period_id)
 		select p_id, p_name, l_value, l_period_id;
-
-		l_index = l_index + 1;
 	end loop;
 end; $$;
 

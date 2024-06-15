@@ -236,21 +236,8 @@ func (d *Dao) DeleteElement(ctx context.Context, user, elementId string) error {
 		return errors.New("nil value")
 	}
 
-	transaction, errTransaction := d.pool.Begin(ctx)
-	if errTransaction != nil {
-		return errTransaction
-	}
-
-	if _, err := transaction.Exec(ctx, "call susers.delete_element($1, $2)", user, elementId); err != nil {
-		return transaction.Rollback(ctx)
-	} else {
-		if errCommit := transaction.Commit(ctx); errCommit != nil {
-			transaction.Rollback(ctx)
-			return errCommit
-		} else {
-			return nil
-		}
-	}
+	_, errExec := d.pool.Exec(ctx, "call susers.delete_element($1, $2)", user, elementId)
+	return errExec
 }
 
 // DeleteGraph deletes an element from an user. May raise error on auth
@@ -259,22 +246,8 @@ func (d *Dao) DeleteGraph(ctx context.Context, user, graphId string) error {
 		return errors.New("nil value")
 	}
 
-	transaction, errTransaction := d.pool.Begin(ctx)
-	if errTransaction != nil {
-		return errTransaction
-	}
-
-	if _, err := transaction.Exec(ctx, "call susers.delete_graph($1, $2)", user, graphId); err != nil {
-		errRollback := transaction.Rollback(ctx)
-		return errors.Join(err, errRollback)
-	} else {
-		if errCommit := transaction.Commit(ctx); errCommit != nil {
-			transaction.Rollback(ctx)
-			return errCommit
-		} else {
-			return nil
-		}
-	}
+	_, errExec := d.pool.Exec(ctx, "call susers.delete_graph($1, $2)", user, graphId)
+	return errExec
 }
 
 // LoadElementForUser returns an element, if any, matching that id
@@ -705,6 +678,7 @@ func (d *Dao) UpsertElement(ctx context.Context, user string, graphId string, el
 			for value, period := range values {
 				mappedValues[index] = value
 				mappedPeriods[index] = serializePeriod(period)
+				index++
 			}
 
 			//susers.upsert_attributes(p_user_login text, p_id text, p_name text, p_values text[], p_periods text[])

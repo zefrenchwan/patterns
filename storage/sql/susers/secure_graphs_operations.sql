@@ -620,7 +620,7 @@ begin
 		from sgraphs.relation_role_values RRV
 		where p_element_id = RRV.relation_value
 	) then 
-		raise exception 'a relation depends on current element to delete';
+		raise exception 'a relation depends on current element to delete' using errcode = '23503';
 	end if;
 
 	-- ok to delete 
@@ -707,6 +707,7 @@ delete from sgraphs.element_trait;
 delete from sgraphs.elements;
 delete from sgraphs.graphs;
 delete from sgraphs.traits;
+delete from sgraphs.periods;
 
 end; $$;
 

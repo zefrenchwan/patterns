@@ -71,7 +71,7 @@ create table sgraphs.elements (
 	element_id text primary key,
 	graph_id text not null references sgraphs.graphs(graph_id) on delete cascade,
 	element_type int not null references sgraphs.reftypes(reftype_id),
-	element_period bigint references sgraphs.periods(period_id)
+	element_period bigint references sgraphs.periods(period_id) on delete cascade
 );
 
 alter table sgraphs.elements owner to upa;
@@ -90,7 +90,7 @@ create table sgraphs.entity_attributes (
 	entity_id text references sgraphs.elements(element_id) on delete cascade,
 	attribute_name text not null, 
 	attribute_value text not null, 
-	period_id bigint references sgraphs.periods(period_id)
+	period_id bigint references sgraphs.periods(period_id) on delete cascade
 );
 
 alter table sgraphs.entity_attributes owner to upa;
