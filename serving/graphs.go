@@ -59,7 +59,7 @@ func deleteGraphHandler(wrapper ServiceParameters, w http.ResponseWriter, r *htt
 	}
 
 	if err := wrapper.Dao.DeleteGraph(wrapper.Ctx, user, graphId); err != nil {
-		return NewServiceInternalServerError(err.Error())
+		return BuildApiErrorFromStorageError(err)
 	}
 
 	w.WriteHeader(200)

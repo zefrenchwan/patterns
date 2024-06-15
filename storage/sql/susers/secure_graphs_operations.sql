@@ -644,7 +644,7 @@ begin
 
 	if l_graph_id is null then 
 		-- no matching id, no action 
-		return;
+		raise exception 'resource not found: %', p_graph_id;
 	end if;
 
 	-- user may not modify graph 
@@ -667,7 +667,7 @@ begin
 	) select counter into l_counter from all_dependencies;
 		
 	if l_counter > 0 then 
-		raise exception 'a relation outside the graph depends on an element in the graph';
+		raise exception 'forbidden: a relation outside the graph depends on an element in the graph' using errcode = '23503';
 	end if;
 
 	-- ok to delete 

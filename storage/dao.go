@@ -265,7 +265,8 @@ func (d *Dao) DeleteGraph(ctx context.Context, user, graphId string) error {
 	}
 
 	if _, err := transaction.Exec(ctx, "call susers.delete_graph($1, $2)", user, graphId); err != nil {
-		return transaction.Rollback(ctx)
+		errRollback := transaction.Rollback(ctx)
+		return errors.Join(err, errRollback)
 	} else {
 		if errCommit := transaction.Commit(ctx); errCommit != nil {
 			transaction.Rollback(ctx)

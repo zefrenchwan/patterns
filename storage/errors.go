@@ -1,18 +1,26 @@
 package storage
 
-import "strings"
+import (
+	"errors"
 
-const (
-	AUTH_PREFIX     = "auth failure:"
-	RESOURCE_PREFIX = "resource not found: "
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
-// IsAuthErrorMessage returns true if message is about an auth issue
-func IsAuthErrorMessage(message string) bool {
-	return strings.HasPrefix(message, AUTH_PREFIX)
-}
+//  P0002	no_data_found
+// 42501	insufficient_privilege
 
-// IsResourceNotFoundMessage returns true if message is about a resource that was not found
-func IsResourceNotFoundMessage(message string) bool {
-	return strings.HasPrefix(RESOURCE_PREFIX, message)
+const (
+	AUTH_CODE          = "42501"
+	RESOURCE_CODE      = "P0002"
+	INCONSISTENCY_CODE = "23503"
+)
+
+func FindCodeInPSQLException(sourceError error) string {
+	var pgErr *pgconn.PgError
+	var result string
+	if errors.As(sourceError, &pgErr) {
+		result = pgErr.Code
+	}
+
+	return result
 }

@@ -156,7 +156,7 @@ declare
 	l_key_id bigint;
 begin 
 	if not exists (select 1 from sgraphs.graphs where graph_id = p_graph_id) then 
-		raise exception 'no graph with provided id';
+		raise exception 'no graph with provided id' using errcode = 'P0002';
 	end if;
 
 	select entry_id into l_key_id 
@@ -270,11 +270,11 @@ declare
 	l_type int;
 begin 
 	if array_length(p_values, 1) <> array_length(p_periods, 1) then 
-		raise exception 'different sizes for periods and values';
+		raise exception 'different sizes for periods and values' using errcode = '22023';
 	end if;
 
 	if not exists (select 1 from sgraphs.elements where element_id = p_id) then 
-		raise exception 'no match for entity %', p_id;
+		raise exception 'no match for entity %', p_id using errcode = 'P0002';
 	end if;
 
 	delete from sgraphs.entity_attributes 
@@ -314,12 +314,12 @@ declare
 begin 
 
 	if not exists (select 1 from sgraphs.elements where element_id = p_id) then 
-		raise exception 'no match for relaton %', p_id;
+		raise exception 'no match for relaton %', p_id using errcode = 'P0002';
 	end if;
 
 	foreach l_element in array p_values loop 
 		if not exists (select 1 from sgraphs.elements where element_id = p_id) then 
-			raise exception 'invalid argument in link: %', l_element;
+			raise exception 'invalid argument in link: %', l_element using errcode = '22023';
 		end if;
 	end loop;
 

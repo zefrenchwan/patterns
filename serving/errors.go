@@ -2,6 +2,7 @@ package serving
 
 import (
 	"net/http"
+	"strings"
 
 	"github.com/zefrenchwan/patterns.git/storage"
 )
@@ -27,11 +28,14 @@ func BuildApiErrorFromStorageError(sourceError error) error {
 		return sourceError
 	}
 
-	message := sourceError.Error()
-	switch {
-	case storage.IsAuthErrorMessage(message):
+	message := strings.Trim(sourceError.Error(), " ")
+
+	switch storage.FindCodeInPSQLException(sourceError) {
+	case storage.INCONSISTENCY_CODE:
 		return NewServiceForbiddenError(message)
-	case storage.IsResourceNotFoundMessage(message):
+	case storage.AUTH_CODE:
+		return NewServiceUnauthorizedError(message)
+	case storage.RESOURCE_CODE:
 		return NewServiceNotFoundError(message)
 	default:
 		return NewServiceInternalServerError(message)
@@ -42,6 +46,14 @@ func BuildApiErrorFromStorageError(sourceError error) error {
 func NewServiceHttpClientError(message string) ServiceHttpError {
 	return ServiceHttpError{
 		httpCode: http.StatusBadRequest,
+		message:  message,
+	}
+}
+
+// NewServiceUnauthorizedError returns a new 401 (unauthorized) error
+func NewServiceUnauthorizedError(message string) ServiceHttpError {
+	return ServiceHttpError{
+		httpCode: http.StatusUnauthorized,
 		message:  message,
 	}
 }

@@ -20,7 +20,7 @@ declare
 begin
     -- exit if user already exists 
 	if exists (select 1 from susers.users where user_login = p_login) then
-		raise exception 'user already exists';
+		raise exception 'user already exists' using errcode = '42710';
 		return;
 	end if;
     -- generate random salt 
@@ -99,7 +99,7 @@ begin
 	and user_active = true;
 	
 	if l_found is null or not l_found then 
-		raise exception 'auth failure: no active user found for login %', p_login;
+		raise exception 'auth failure: no active user found for login %', p_login using errcode = '42501';
 	end if;
 
 	return l_secret;
@@ -190,7 +190,7 @@ begin
 	where user_login = p_creator;
 
 	if l_active is null or not l_active then 
-		raise exception 'auth failure: no access for %', p_creator;
+		raise exception 'auth failure: no access for %', p_creator using errcode = '42501';
 	end if;
 
 	-- find other user to act on
@@ -199,7 +199,7 @@ begin
 	where user_login = p_login;
 
 	if l_user is null then 
-		raise exception 'auth failure: no user %', p_login;
+		raise exception 'auth failure: no user %', p_login using errcode = '42501';
 	end if;
 
 	select susers.roles_for_resource(p_creator, 'user', l_user) into l_access_rights;
@@ -211,7 +211,7 @@ begin
 	end if;
 
 	if not l_authorized then 
-		raise exception 'auth failure: % unauthorized', p_creator;
+		raise exception 'auth failure: % unauthorized', p_creator using errcode = '42501';
 	end if;
 
 	select susers.generate_random_string() into l_salt;
@@ -247,7 +247,7 @@ begin
 		from sgraphs.graphs 
 		where graph_id = p_resource;
 	else 
-		raise exception 'unexpected class %', p_class;
+		raise exception 'unexpected class %', p_class using errcode = '42704';
 	end if;
 
 	return l_found is not null and l_found = true;
@@ -272,7 +272,7 @@ begin
 	where user_active and user_login = p_user_login;
 
 	if l_user_id is null then 
-		raise exception 'auth failure: no active user %', p_user_login;
+		raise exception 'auth failure: no active user %', p_user_login using errcode = '42501';
 	end if;
 	-- user exists and is active
 
@@ -281,7 +281,7 @@ begin
 	where role_name = p_auth;
 
 	if l_role_id is null then  
-		raise exception '% is not a valid role',  p_auth;
+		raise exception '% is not a valid role',  p_auth using errcode = '42704';
 	end if;
 	-- role exists
 
@@ -290,17 +290,17 @@ begin
 	where class_name = p_class;
 
 	if l_class_id is null then 
-		raise exception '% is not a valid class', p_class;
+		raise exception '% is not a valid class', p_class using errcode = '42704';
 	end if;
 	-- class exists
 
 	if p_resource is not null then 
 		select susers.test_if_resource_exists(p_class, p_resource) into l_found;
 		if not l_found then 
-			raise exception 'resource not found: non existing resource %', p_resource;
+			raise exception 'resource not found: non existing resource %', p_resource using errcode = 'P0002';
 		end if;
 	else
-		raise exception 'resource shoud not be null';
+		raise exception 'resource shoud not be null' using errcode = '39004';
 	end if;
 	-- resource is valid for that class
 
@@ -346,7 +346,7 @@ begin
 	and user_login = p_user_login;
 
 	if l_user_id is null then 
-		raise exception 'auth failure: no active user %', p_user_login;
+		raise exception 'auth failure: no active user %', p_user_login using errcode = '42501';
 	end if;
 	-- user exists and is active
 
@@ -355,14 +355,14 @@ begin
 	where class_name = p_class;
 
 	if l_class_id is null then 
-		raise exception '% is not a valid class', p_class;
+		raise exception '% is not a valid class', p_class using errcode = '42704';
 	end if;
 	-- class exists
 
 	if p_resource is not null then 
 		select susers.test_if_resource_exists(p_class, p_resource) into l_found;
 		if not l_found then 
-			raise exception 'resource not found: non existing resource %', p_resource;
+			raise exception 'resource not found: non existing resource %', p_resource using errcode = 'P0002';
 		end if;
 		select p_resource into l_resource;
 	else
@@ -377,7 +377,7 @@ begin
 		where role_name = l_role;
 
 		if l_role_id is null then  
-			raise exception '% is not a valid role',  p_auth;
+			raise exception '% is not a valid role',  p_auth using errcode = '42704';
 		end if;
 		-- role exists
 
@@ -404,7 +404,7 @@ begin
 
 	if array_length(p_role_names) > 0 then 
 		-- no match found and one was necessary
-		raise exception 'auth failure: unauthorized';
+		raise exception 'auth failure: unauthorized' using errcode = '42501';
 	end if;
 end; $$;
 
@@ -433,7 +433,7 @@ begin
 	where CLA.class_name = 'graph';
 	
 	if l_class_id is null then 
-		raise exception 'invalid class provided';
+		raise exception 'invalid class provided' using errcode = '42704';
 	end if;
 
 	return query 
