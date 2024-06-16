@@ -319,7 +319,7 @@ begin
 	end if;
 
 	foreach l_element in array p_values loop 
-		if not exists (select 1 from sgraphs.elements where element_id = p_id) then 
+		if not exists (select 1 from sgraphs.elements where element_id = l_element) then 
 			raise exception 'invalid argument in link: %', l_element using errcode = '22023';
 		end if;
 	end loop;
@@ -340,8 +340,11 @@ begin
 	insert into sgraphs.relation_role(relation_id, role_in_relation)
 	select p_id, p_role returning relation_role_id into l_new_role_id;
 
+	with all_role_values as (
+		select l_new_role_id as relation_role_id, unnest(p_values) as relation_value
+	)
 	insert into sgraphs.relation_role_values(relation_role_id, relation_value)
-	select l_new_role_id, unnest(p_values);
+	select ARV.relation_role_id, ARV.relation_value from all_role_values ARV;
 
 end; $$;
 
