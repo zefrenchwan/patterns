@@ -45,12 +45,11 @@ insert into sgraphs.reftypes(reftype_id, reftype_description) values(10, 'mixed'
 -- Intervals are stored as an ordered array of serialized time intervals
 create table sgraphs.periods (
 	period_id bigserial primary key, 
-	period_empty bool,
-	period_full bool,
 	-- to optimize and not load the full table to find matches
 	period_min timestamp without time zone,
 	-- to optimize and not load the full table to find matches
 	period_max timestamp without time zone,
+	-- ];[ for empty, ]-oo;+oo[ for full, intervals joined with U otherwise
 	period_value text
 );
 

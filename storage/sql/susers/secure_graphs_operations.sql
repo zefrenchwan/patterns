@@ -287,7 +287,7 @@ begin
         ASG.editable,
         ELT.element_id,
         ELT.element_type,
-        sgraphs.serialize_period(PER.period_full, PER.period_empty, PER.period_value) as activity
+        PER.period_value as activity
         from sgraphs.elements ELT  
         join all_source_graphs ASG on ASG.graph_id = ELT.graph_id
         join sgraphs.periods PER on PER.period_id = ELT.element_period
@@ -346,7 +346,7 @@ begin
     ), all_entities as (
         select ETA.entity_id as element_id, ETA.attribute_name as attribute_key,  
         array_agg(ETA.attribute_value order by ETA.period_id) as attribute_values,
-        array_agg(sgraphs.serialize_period(PER.period_full, PER.period_empty, PER.period_value) order by PER.period_id) as attribute_periods
+        array_agg(PER.period_value order by PER.period_id) as attribute_periods
         from sgraphs.entity_attributes ETA 
         join all_source_entities ASE on ETA.entity_id = ASE.element_id 
         join sgraphs.periods PER on PER.period_id = ETA.period_id 
@@ -555,7 +555,7 @@ return query
 with element_data as (
 	select ELT.element_id,
 	array_agg(TRA.trait) as traits,
- 	max(sgraphs.serialize_period(PER.period_full, false, PER.period_value)) as activity  
+ 	max(PER.period_value) as activity  
 	from sgraphs.elements ELT 
 	join sgraphs.periods PER on PER.period_id = ELT.element_period
 	join sgraphs.element_trait ETR on ETR.element_id = ELT.element_id
@@ -574,10 +574,10 @@ with element_data as (
 	select ENA.entity_id as element_id,
 	ENA.attribute_name, 
 	array_agg(ENA.attribute_value order by ENA.attribute_id) as attribute_values,  
-	array_agg(sgraphs.serialize_period(PER.period_full, false, PER.period_value) order by ENA.attribute_id) as attribute_periods
+	array_agg(PER.period_value order by ENA.attribute_id) as attribute_periods
 	from sgraphs.entity_attributes ENA 
 	join sgraphs.periods PER on PER.period_id = ENA.period_id
-	where not PER.period_empty
+	where PER.period_value <> '];['
 	and ENA.entity_id = p_element_id
 	group by ENA.entity_id, ENA.attribute_name
 )

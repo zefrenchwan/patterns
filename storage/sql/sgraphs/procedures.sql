@@ -77,8 +77,6 @@ declare
 	-- right part of the activity interval 
 	l_period_right text; 
 	l_period_right_value timestamp without time zone;
-	-- if activity full 
-	l_period_full bool;
 	-- min of activity
 	l_period_min timestamp without time zone;
 	-- max of activity 
@@ -138,11 +136,8 @@ begin
 		end if;	
 	end loop;
 
-	-- finally, insert 
-	select l_period_min is null and l_period_max is null into l_period_full;
-
-	insert into sgraphs.periods(period_empty, period_full, period_min, period_max, period_value)
-	select not l_activity_found, l_period_full, l_period_min, l_period_max, p_activity
+	insert into sgraphs.periods(period_min, period_max, period_value)
+	select l_period_min, l_period_max, p_activity
 	returning period_id into p_new_id;
 end; $$;
 
