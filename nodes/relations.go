@@ -8,25 +8,15 @@ import (
 )
 
 const (
-	// SUBJECT_ROLE defines the subject of the relation.
+	// RELATION_ROLE_SUBJECT defines the subject of the relation.
 	// For instance, Loves(x, z), then x is the subject
-	SUBJECT_ROLE = "subject"
-	// OBJECT_ROLE is used to set a direct link with someone / something.
+	RELATION_ROLE_SUBJECT = "subject"
+	// RELATION_ROLE_OBJECT is used to set a direct link with someone / something.
 	// For instance: loves(x, y), x is the subject, and y is the object (even if it is indeed a person)
-	OBJECT_ROLE = "object"
-	// LOCATION_ROLE is used to set a location.
+	RELATION_ROLE_OBJECT = "object"
+	// RELATION_ROLE_LOCATION is used to set a location.
 	// For instance, meeting(person, person, restaurant)
-	LOCATION_ROLE = "location"
-	// MEANS_ROLE is used to define how the action took place.
-	// For instance, travel(person, plane), then plane is the means used
-	MEANS_ROLE = "means"
-	// CAUSE_ROLE is used to explain cause for this link.
-	// For instance, give(person, person, money, love), love is the cause of the action
-	CAUSE_ROLE = "cause"
-	// GOAL_ROLE defines a goal for a link.
-	// For instance, marry(person, person, money), money is the goal
-	// (no comment on the example, their purpose is to offer clear situations to understand)
-	GOAL_ROLE = "goal"
+	RELATION_ROLE_LOCATION = "location"
 )
 
 // Relation defines a relation between elements.
@@ -118,7 +108,7 @@ func NewMultiRelationWithId(id string, subjects []string, traits []string) Relat
 		result.links = make(map[string][]string)
 		copySubject := make([]string, len(subjects))
 		copy(copySubject, subjects)
-		result.links[SUBJECT_ROLE] = copySubject
+		result.links[RELATION_ROLE_SUBJECT] = copySubject
 	}
 
 	if len(traits) == 0 {
@@ -142,25 +132,8 @@ func (r *Relation) Id() string {
 	return result
 }
 
-// GetSubjets returns the subjects of the relation, nil for nil, empty for no subject
-func (r *Relation) GetSubjects() []string {
-	if r == nil {
-		return nil
-	} else if len(r.links) == 0 {
-		return []string{}
-	}
-
-	values := r.links[SUBJECT_ROLE]
-	if len(values) == 0 {
-		return []string{}
-	}
-	copySubjects := make([]string, len(values))
-	copy(copySubjects, values)
-	return copySubjects
-}
-
-// GetValuesPerRole returns the values per role, including the subject, for that relation
-func (r *Relation) GetValuesPerRole() map[string][]string {
+// ValuesPerRole returns the values per role, including the subject, for that relation
+func (r *Relation) ValuesPerRole() map[string][]string {
 	if r == nil {
 		return nil
 	}
@@ -177,11 +150,6 @@ func (r *Relation) GetValuesPerRole() map[string][]string {
 	}
 
 	return result
-}
-
-// SetValueForRole sets the value for the role, no matter previous value
-func (r *Relation) SetValueForRole(role string, linkedId string) error {
-	return r.SetValuesForRole(role, []string{linkedId})
 }
 
 // SetValuesForRole sets the values for a given role

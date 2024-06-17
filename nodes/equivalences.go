@@ -89,8 +89,8 @@ func AreSameElements(a, b Element) bool {
 	}
 
 	if aFormalRelationOk {
-		aValues := aFormalRelation.GetValuesPerRole()
-		bValues := bFormalRelation.GetValuesPerRole()
+		aValues := aFormalRelation.ValuesPerRole()
+		bValues := bFormalRelation.ValuesPerRole()
 		if len(aValues) != len(bValues) {
 			return false
 		}

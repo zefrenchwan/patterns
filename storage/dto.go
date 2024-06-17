@@ -87,7 +87,7 @@ func SerializeElement(e nodes.Element) ElementDTO {
 
 	if relation, ok := e.(nodes.FormalRelation); ok {
 		dto.Roles = make(map[string][]string)
-		for role, values := range relation.GetValuesPerRole() {
+		for role, values := range relation.ValuesPerRole() {
 			dto.Roles[role] = slices.Clone(values)
 		}
 	} else if entity, ok := e.(*nodes.Entity); ok {

@@ -167,8 +167,8 @@ func TestRelationSerde(t *testing.T) {
 	leftPeriod := nodes.NewPeriod(leftInterval)
 
 	links := map[string][]string{
-		nodes.SUBJECT_ROLE: {"X"},
-		nodes.OBJECT_ROLE:  {"Y"},
+		nodes.RELATION_ROLE_SUBJECT: {"X"},
+		nodes.RELATION_ROLE_OBJECT:  {"Y"},
 	}
 
 	relation := nodes.NewRelationWithIdAndRoles("popo", []string{"Couple"}, links)
@@ -194,7 +194,7 @@ func TestRelationSerde(t *testing.T) {
 		reverseRelation = r
 	}
 
-	reverseRoles := reverseRelation.GetValuesPerRole()
+	reverseRoles := reverseRelation.ValuesPerRole()
 	if len(reverseRoles) != len(links) {
 		t.Fail()
 	}

@@ -692,7 +692,7 @@ func (d *Dao) UpsertElement(ctx context.Context, user string, graphId string, el
 			}
 		}
 	} else if relation != nil {
-		for role, links := range relation.GetValuesPerRole() {
+		for role, links := range relation.ValuesPerRole() {
 			_, errUpdate := transaction.Exec(ctx,
 				"call susers.upsert_links($1, $2, $3, $4)",
 				user, relation.Id(), role, links,

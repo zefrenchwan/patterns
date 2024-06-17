@@ -52,12 +52,8 @@ type FormalInstance interface {
 type FormalRelation interface {
 	Element
 
-	// GetSubjets returns the subjects of the relation, nil for nil, empty for no subject
-	GetSubjects() []string
-	// GetValuesPerRole returns the values per role, including the subject, for that relation
-	GetValuesPerRole() map[string][]string
-	// SetValueForRole sets the value for the role, no matter previous value
-	SetValueForRole(role string, linkedId string) error
+	// ValuesPerRole returns the values per role, including the subject, for that relation
+	ValuesPerRole() map[string][]string
 	// SetValuesForRole sets the values for a given role
 	SetValuesForRole(role string, linkedIds []string) error
 }
