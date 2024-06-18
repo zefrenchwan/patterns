@@ -43,8 +43,8 @@ func NewActiveTimeValues() ActiveTimeValues {
 }
 
 // ContainsAttribute returns true if receiver is not nil and it contains a non nil entry with that key
-func (i TimeValues) ContainsAttribute(attr string) bool {
-	switch value, found := i[attr]; found {
+func (t TimeValues) ContainsAttribute(attr string) bool {
+	switch value, found := t[attr]; found {
 	case true:
 		return value != nil
 	default:
@@ -64,14 +64,14 @@ func (a *ActiveTimeValues) ContainsAttribute(attr string) bool {
 }
 
 // Attributes returns the sorted slice of all attributes
-func (i TimeValues) Attributes() []string {
-	if i == nil {
+func (t TimeValues) Attributes() []string {
+	if t == nil {
 		return nil
 	}
 
-	result := make([]string, len(i))
+	result := make([]string, len(t))
 	index := 0
-	for k := range i {
+	for k := range t {
 		result[index] = k
 		index++
 	}
@@ -93,16 +93,16 @@ func (a *ActiveTimeValues) Attributes() []string {
 }
 
 // SetValue sets a value for an attribute, for the full period.
-func (i TimeValues) SetValue(attribute string, value string) error {
+func (t TimeValues) SetValue(attribute string, value string) error {
 	var matchingAttributeMap map[string]*Period
 
 	// find matching map for this attribute, if any
-	if i == nil {
+	if t == nil {
 		return errors.New("nil values")
-	} else if value, found := i[attribute]; !found {
+	} else if value, found := t[attribute]; !found {
 		// not found, allocate
-		i[attribute] = make(map[string]*Period)
-		matchingAttributeMap = i[attribute]
+		t[attribute] = make(map[string]*Period)
+		matchingAttributeMap = t[attribute]
 	} else {
 		matchingAttributeMap = value
 	}
@@ -133,9 +133,9 @@ func (a *ActiveTimeValues) SetValue(attribute string, value string) error {
 
 // AddValue sets the value of an attribute during a given period.
 // It updates the periods of the other values (for the same attribute) accordingly.
-func (i TimeValues) AddValue(attribute string, value string, validity Period) error {
+func (t TimeValues) AddValue(attribute string, value string, validity Period) error {
 	// nil should return an error, empty period should change nothing
-	if i == nil {
+	if t == nil {
 		return errors.New("nil values")
 	} else if validity.IsEmptyPeriod() {
 		return nil
@@ -143,10 +143,10 @@ func (i TimeValues) AddValue(attribute string, value string, validity Period) er
 
 	// find matching attribute map if any
 	var matchingAttributeMap map[string]*Period
-	if value, found := i[attribute]; !found {
+	if value, found := t[attribute]; !found {
 		// not found, allocate
-		i[attribute] = make(map[string]*Period)
-		matchingAttributeMap = i[attribute]
+		t[attribute] = make(map[string]*Period)
+		matchingAttributeMap = t[attribute]
 	} else {
 		matchingAttributeMap = value
 	}
@@ -281,10 +281,10 @@ func (a *ActiveTimeValues) RemovePeriodForAttribute(attribute string, period Per
 }
 
 // ValuesForAttribute returns the values for an attribute as a sorted slice
-func (i TimeValues) ValuesForAttribute(attribute string) ([]string, error) {
-	if i == nil {
+func (t TimeValues) ValuesForAttribute(attribute string) ([]string, error) {
+	if t == nil {
 		return nil, errors.New("nil values")
-	} else if attributeValues, found := i[attribute]; !found {
+	} else if attributeValues, found := t[attribute]; !found {
 		return nil, nil
 	} else if len(attributeValues) == 0 {
 		return nil, nil
@@ -329,10 +329,10 @@ func (a *ActiveTimeValues) ValuesForAttribute(attribute string) ([]string, error
 }
 
 // TimeValuesForAttribute returns, for each value of the attribute, the matching time intervals
-func (i TimeValues) TimeValuesForAttribute(attribute string) (map[string][]Interval[time.Time], error) {
-	if i == nil {
+func (t TimeValues) TimeValuesForAttribute(attribute string) (map[string][]Interval[time.Time], error) {
+	if t == nil {
 		return nil, errors.New("nil instance")
-	} else if attributeValues, found := i[attribute]; !found {
+	} else if attributeValues, found := t[attribute]; !found {
 		return nil, nil
 	} else if len(attributeValues) == 0 {
 		return nil, nil

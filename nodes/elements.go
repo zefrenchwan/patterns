@@ -56,4 +56,15 @@ type FormalRelation interface {
 	ValuesPerRole() map[string][]string
 	// SetValuesForRole sets the values for a given role
 	SetValuesForRole(role string, linkedIds []string) error
+	// PeriodValuesPerRole returns, for each role, the operands with linked validity
+	PeriodValuesPerRole() map[string]map[string]Period
+	// SetPeriodValuesForRole erases previous values for that role, and sets new values with that period
+	SetPeriodValuesForRole(role string, linkedIds []string, period Period) error
+	// AddPeriodValuesForRole adds given period for a value in a role.
+	// Creates role and value if not already here.
+	AddPeriodValuesForRole(role string, linkedIds []string, period Period) error
+	// Remove the period for that role and those values.
+	// If new period is empty, deletes the value.
+	// If there is no value in that role, delete the role
+	RemovePeriodValuesForRole(role string, linkedIds []string, period Period) error
 }
