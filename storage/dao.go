@@ -299,15 +299,16 @@ func (d *Dao) LoadElementForUser(ctx context.Context, user string, elementId str
 		}
 
 		roleValues := mapAnyToStringSlice(rawValues[4])
+		var rolePeriods []nodes.Period
 
 		var attributeName string
 		var attributeValues []string
 		var attributePeriods []nodes.Period
 
 		if elementType == 1 {
-			attributeName = rawValues[5].(string)
-			attributeValues = mapAnyToStringSlice(rawValues[6])
-			rawPeriods := mapAnyToStringSlice(rawValues[7])
+			attributeName = rawValues[6].(string)
+			attributeValues = mapAnyToStringSlice(rawValues[7])
+			rawPeriods := mapAnyToStringSlice(rawValues[8])
 			for _, rawPeriod := range rawPeriods {
 				if period, err := deserializePeriod(rawPeriod); err == nil {
 					attributePeriods = append(attributePeriods, period)
@@ -320,6 +321,28 @@ func (d *Dao) LoadElementForUser(ctx context.Context, user string, elementId str
 			if len(attributePeriods) != len(attributeValues) {
 				globalErr = errors.Join(globalErr, errors.New("invalid attributes request: size mismatch"))
 				break
+			}
+		} else if elementType == 2 {
+			rawPeriods := mapAnyToStringSlice(rawValues[5])
+			if rawPeriods == nil {
+				globalErr = errors.Join(globalErr, errors.New("invalid value for period: cannot be null"))
+				break
+			} else if len(roleValues) == 0 {
+				globalErr = errors.Join(globalErr, errors.New("invalid value: cannot be null"))
+				break
+			} else if len(roleValues) != len(rawPeriods) {
+				globalErr = errors.Join(globalErr, errors.New("invalid values and periods: size mismatch"))
+				break
+			}
+
+			for _, rawPeriod := range rawPeriods {
+				rolePeriod, errPeriod := deserializePeriod(rawPeriod)
+				if errPeriod != nil {
+					globalErr = errors.Join(globalErr, errPeriod)
+					continue
+				} else {
+					rolePeriods = append(rolePeriods, rolePeriod)
+				}
 			}
 		}
 
@@ -338,11 +361,14 @@ func (d *Dao) LoadElementForUser(ctx context.Context, user string, elementId str
 			}
 		case 2:
 			if relation == nil {
-				relationValue := nodes.NewUnlinkedRelationWithId(id, traits)
+				relationValue := nodes.NewRelationWithId(id, traits)
 				relation = &relationValue
 			}
 
-			relation.SetValuesForRole(roleName, roleValues)
+			for index := 0; index < len(roleValues); index++ {
+				relation.AddPeriodValueForRole(roleName, roleValues[index], rolePeriods[index])
+			}
+
 		default:
 			return nil, errors.New("mixed types not implemented")
 		}
@@ -527,13 +553,13 @@ func (d *Dao) LoadGraphForUser(ctx context.Context, user string, graphId string)
 	// 	graph_id text, editable bool,
 	// 	element_id text, activity text, traits text[],
 	// 	equivalence_class text[], equivalence_class_graph text[],
-	// 	role_in_relation text, role_values text[]
+	// 	role_in_relation text, role_values text[], role_periods[]
 	// )
 
 	const queryRelations = "select * from susers.transitive_load_relations_in_graph($1, $2) order by element_id asc"
 	rowsRelation, errRelation := d.pool.Query(ctx, queryRelations, user, graphId)
 	if errRelation != nil {
-		return empty, errEntities
+		return empty, errRelation
 	}
 
 	for rowsRelation.Next() {
@@ -579,6 +605,8 @@ func (d *Dao) LoadGraphForUser(ctx context.Context, user string, graphId string)
 
 		var roleName string
 		var roleValues []string
+		var rolePeriods []string
+
 		if rawRelation[7] != nil {
 			roleName = rawRelation[7].(string)
 		}
@@ -592,15 +620,32 @@ func (d *Dao) LoadGraphForUser(ctx context.Context, user string, graphId string)
 			continue
 		}
 
+		if rawRelation[9] != nil {
+			rolePeriods = mapAnyToStringSlice(rawRelation[9])
+		}
+
+		if len(rolePeriods) == 0 {
+			globalErr = errors.Join(globalErr, errors.New("no value for a role in relation"))
+			continue
+		} else if len(rolePeriods) != len(roleValues) {
+			globalErr = errors.Join(globalErr, errors.New("relation values and periods mismatch"))
+			continue
+		}
+
 		localEquivalenceClassGraph := make(map[string]string)
-		size := len(equivalenceClassGraph)
-		for index := 0; index < size; index++ {
+		for index := 0; index < len(equivalenceClassGraph); index++ {
 			localEquivalenceClassGraph[equivalenceClass[index]] = equivalenceClassGraph[index]
 		}
 
-		result.AddToFormalRelation(currentGraphId, currentGraphEditable, localEquivalenceClassGraph,
-			elementId, traits, activity, roleName, roleValues,
-		)
+		for index := 0; index < len(roleValues); index++ {
+			switch rolePeriod, errPeriod := deserializePeriod(rolePeriods[index]); errPeriod {
+			case nil:
+				result.AddToFormalRelation(currentGraphId, currentGraphEditable, localEquivalenceClassGraph,
+					elementId, traits, activity, roleName, roleValues[index], rolePeriod)
+			default:
+				globalErr = errors.Join(globalErr, errPeriod)
+			}
+		}
 	}
 
 	if globalErr != nil {
@@ -692,10 +737,23 @@ func (d *Dao) UpsertElement(ctx context.Context, user string, graphId string, el
 			}
 		}
 	} else if relation != nil {
-		for role, links := range relation.ValuesPerRole() {
+		for role, links := range relation.PeriodValuesPerRole() {
+			// serialize values and periods as slices
+			linkValues := make([]string, 0)
+			periodValues := make([]string, 0)
+			for link, period := range links {
+				if period.IsEmptyPeriod() {
+					continue
+				}
+
+				linkValues = append(linkValues, link)
+				periodValues = append(periodValues, serializePeriod(period))
+			}
+
+			// then call procedure
 			_, errUpdate := transaction.Exec(ctx,
-				"call susers.upsert_links($1, $2, $3, $4)",
-				user, relation.Id(), role, links,
+				"call susers.upsert_links($1, $2, $3, $4, $5)",
+				user, relation.Id(), role, linkValues, periodValues,
 			)
 
 			if errUpdate != nil {
@@ -773,11 +831,6 @@ func deserializePeriod(value string) (nodes.Period, error) {
 
 	values := strings.Split(value, "U")
 	return nodes.DeserializePeriod(values, DATE_STORAGE_FORMAT)
-}
-
-// isEntityFromRefType returns true if value matches either entity or mixed
-func isEntityFromRefType(value int) bool {
-	return value == 1 || value == 10
 }
 
 // mapAnySliceToStringSlice gets a slice of values and maps it to a string slice

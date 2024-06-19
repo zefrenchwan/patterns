@@ -135,7 +135,7 @@ func (g *Graph) AddToFormalInstance(
 func (g *Graph) AddToFormalRelation(
 	graphId string, editable bool, equivalenceClassByGaph map[string]string,
 	elementId string, traits []string, activity nodes.Period,
-	roleName string, roleValues []string,
+	roleName string, roleValue string, rolePeriod nodes.Period,
 ) error {
 	if g == nil {
 		return nil
@@ -149,7 +149,7 @@ func (g *Graph) AddToFormalRelation(
 
 	var relation nodes.FormalRelation
 	if previousNode, found := g.values[elementId]; !found {
-		relationValue := nodes.NewUnlinkedRelationWithId(elementId, traits)
+		relationValue := nodes.NewRelationWithId(elementId, traits)
 		relation = &relationValue
 		if err := relation.SetActivePeriod(activity); err != nil {
 			return err
@@ -160,7 +160,7 @@ func (g *Graph) AddToFormalRelation(
 		relation = previousRelation
 	}
 
-	if err := relation.SetValuesForRole(roleName, roleValues); err != nil {
+	if err := relation.AddPeriodValueForRole(roleName, roleValue, rolePeriod); err != nil {
 		return err
 	} else {
 		node.Value = relation

@@ -369,13 +369,13 @@ end; $$;
 
 alter function susers.transitive_load_entities_in_graph owner to upa;
 
-
+-- susers.transitive_load_relations_in_graph loads all relations in dependent graphs starting at p_id a given graph
 create or replace function susers.transitive_load_relations_in_graph(p_user_login text, p_id text)
 returns table (
     graph_id text, editable bool, 
     element_id text, activity text, traits text[], 
     equivalence_class text[], equivalence_class_graph text[],
-    role_in_relation text, role_values text[]
+    role_in_relation text, role_values text[], role_periods text[]
 ) language plpgsql as $$
 declare
 begin 
@@ -384,35 +384,34 @@ begin
     with all_visible_graphs as (
         select TGS.graph_id
         from susers.transitive_visible_graphs_since(p_user_login, p_id) TGS
+    ), all_relation_values as (
+        select RRO.relation_id, 
+        RRO.role_in_relation,
+        RRV.relation_value as role_value,
+        PER.period_value as role_period, 
+        -- would be > 0 if a value in the relation is not authorized
+        case when AVI.graph_id is null then 1 else 0 end as exclude_relation
+        from sgraphs.relation_role RRO
+        join sgraphs.relation_role_values RRV on RRV.relation_role_id = RRO.relation_role_id
+        join sgraphs.elements ELT on ELT.element_id = RRV.relation_value
+        join sgraphs.periods PER on PER.period_id = RRV.relation_period_id
+        left outer join all_visible_graphs AVI on AVI.graph_id = ELT.graph_id
+        where PER.period_value <> '];['
+    ), visible_relation_values as (
+        select 
+        ARV.relation_id, 
+        ARV.role_in_relation,
+        array_agg(ARV.role_value order by ARV.role_value) as role_values, 
+        array_agg(ARV.role_period order by ARV.role_value) as role_periods
+        from all_relation_values ARV 
+        group by ARV.relation_id, ARV.role_in_relation
+        having sum(exclude_relation) = 0 
     ), all_source_elements as (
         select TLB.graph_id, TLB.editable, 
         TLB.element_id, TLB.activity, TLB.traits, 
         TLB.equivalence_class, TLB.equivalence_class_graph
         from susers.transitive_load_base_elements_in_graph(p_user_login, p_id) TLB
         where TLB.element_type in (2,10)
-    ), all_relations as (
-        select RRO.relation_id, 
-        RRO.role_in_relation, 
-        array_agg(RRV.relation_value) as role_values
-        from sgraphs.relation_role RRO
-        join all_source_elements ASE on ASE.element_id = RRO.relation_id
-        join sgraphs.relation_role_values RRV on RRV.relation_role_id = RRO.relation_role_id
-        group by RRO.relation_id, RRO.role_in_relation 
-    ), all_expanded_relations as (
-        select ALR.relation_id, 
-        unnest(ALR.role_values) as role_value 
-        from all_relations ALR
-    ), all_unauthorized_relations as (
-        select distinct AER.relation_id
-        from all_expanded_relations AER
-        join sgraphs.elements ELT on ELT.element_id = AER.role_value
-        left outer join all_visible_graphs AGR on AGR.graph_id = ELT.graph_id
-        where AGR.graph_id is null 
-    ), all_visible_relations as (
-        select distinct ALR.relation_id 
-        from all_relations ALR 
-        left outer join all_unauthorized_relations AUR on AUR.relation_id = ALR.relation_id
-        where AUR.relation_id is null
     )
     select distinct
     ASE.graph_id, 
@@ -422,11 +421,11 @@ begin
     ASE.traits,
     ASE.equivalence_class,
     ASE.equivalence_class_graph,
-    ALR.role_in_relation, 
-    ALR.role_values
+    VRV.role_in_relation, 
+    VRV.role_values,
+    VRV.role_periods
     from all_source_elements ASE 
-    join all_relations ALR on ALR.relation_id = ASE.element_id
-    join all_visible_relations AVR on ALR.relation_id = AVR.relation_id;
+    join visible_relation_values VRV on ASE.element_id = VRV.relation_id;
 end; $$;
 
 alter function susers.transitive_load_relations_in_graph owner to upa;
@@ -482,7 +481,9 @@ alter procedure susers.upsert_attributes owner to upa;
 
 
 -- susers.upsert_links upserts links if user has access to all underlying graphs
-create or replace procedure susers.upsert_links(p_user_login text, p_role_id text, p_role_name text, p_operands text[])
+create or replace procedure susers.upsert_links(
+    p_user_login text, p_role_id text, p_role_name text, 
+    p_operands text[], p_periods text[])
 language plpgsql as $$
 declare 
     l_graph_id text;
@@ -521,7 +522,7 @@ begin
     if not l_all_auth then 
         raise exception 'auth failure: missing auth for linked elements graphs';
     else
-        call sgraphs.upsert_links(p_role_id, p_role_name, p_operands);
+        call sgraphs.upsert_links(p_role_id, p_role_name, p_operands, p_periods);
     end if;
 end;$$;
 
@@ -531,7 +532,7 @@ create or replace function susers.load_element_by_id(p_user_login text, p_elemen
 returns table (
 	element_id text,
 	traits text[], activity text,
-	role_name text, role_values text[], 
+	role_name text, role_values text[], role_periods text[],
 	attribute_name text, attribute_values text[], attribute_periods text[]) 
 language plpgsql as $$
 declare 
@@ -545,7 +546,7 @@ join sgraphs.graphs GRA on ELT.graph_id = GRA.graph_id;
 
 if l_graph_id is null then 
     -- just returns empty
-	return query select null, null, null, null, null, null, null, null where 1 <> 1;
+	return query select null, null, null, null, null, null, null, null, null where 1 <> 1;
     return;
 end if;
 
@@ -565,9 +566,11 @@ with element_data as (
 ), element_roles as (
 	select RRO.relation_id as element_id, 
 	RRO.role_in_relation as role_name , 
-	array_agg(RRV.relation_value order by RRV.relation_value) as role_values 
+	array_agg(RRV.relation_value order by RRV.relation_value) as role_values,
+   	array_agg(PER.period_value order by RRV.relation_value) as role_periods  
 	from sgraphs.relation_role RRO 
 	join sgraphs.relation_role_values RRV on RRO.relation_role_id = RRV.relation_role_id
+    join sgraphs.periods PER on PER.period_id = RRV.relation_period_id
 	where RRO.relation_id = p_element_id
 	group by RRO.relation_id, RRO.role_in_relation
 ), element_entity as (
@@ -587,6 +590,7 @@ EDA.traits,
 EDA.activity,
 ERO.role_name,
 ERO.role_values,
+ERO.role_periods,
 ELE.attribute_name, 
 ELE.attribute_values, 
 ELE.attribute_periods

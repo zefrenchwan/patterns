@@ -165,13 +165,12 @@ func TestRelationSerde(t *testing.T) {
 	now := time.Now().UTC().Truncate(1 * time.Second)
 	leftInterval := nodes.NewLeftInfiniteTimeInterval(now, false)
 	leftPeriod := nodes.NewPeriod(leftInterval)
+	rightInterval := nodes.NewRightInfiniteTimeInterval(now, true)
+	rightPeriod := nodes.NewPeriod(rightInterval)
 
-	links := map[string][]string{
-		nodes.RELATION_ROLE_SUBJECT: {"X"},
-		nodes.RELATION_ROLE_OBJECT:  {"Y"},
-	}
-
-	relation := nodes.NewRelationWithIdAndRoles("popo", []string{"Couple"}, links)
+	relation := nodes.NewRelation([]string{"Couple"})
+	relation.SetValuesForRole(nodes.RELATION_ROLE_SUBJECT, []string{"X"})
+	relation.AddPeriodValueForRole(nodes.RELATION_ROLE_OBJECT, "Y", rightPeriod)
 	relation.SetActivePeriod(leftPeriod)
 
 	dto := storage.SerializeElement(&relation)
@@ -194,14 +193,31 @@ func TestRelationSerde(t *testing.T) {
 		reverseRelation = r
 	}
 
+	// Test if values match
 	reverseRoles := reverseRelation.ValuesPerRole()
-	if len(reverseRoles) != len(links) {
+	if len(reverseRoles) != 2 {
 		t.Fail()
 	}
 
-	for k, v := range links {
-		if slices.Compare(v, reverseRoles[k]) != 0 {
-			t.Fail()
-		}
+	subjects := reverseRoles[nodes.RELATION_ROLE_SUBJECT]
+	objects := reverseRoles[nodes.RELATION_ROLE_OBJECT]
+	if slices.Compare(subjects, []string{"X"}) != 0 {
+		t.Fail()
+	} else if slices.Compare(objects, []string{"Y"}) != 0 {
+		t.Fail()
+	}
+
+	// test if periods match
+	reversePeriods := reverseRelation.PeriodValuesPerRole()
+	subjectPeriods := reversePeriods[nodes.RELATION_ROLE_SUBJECT]
+	objectPeriods := reversePeriods[nodes.RELATION_ROLE_OBJECT]
+	if len(subjectPeriods) != 1 {
+		t.Fail()
+	} else if subjectPeriod := subjectPeriods["X"]; !subjectPeriod.IsFullPeriod() {
+		t.Fail()
+	} else if len(objectPeriods) != 1 {
+		t.Fail()
+	} else if objectPeriod := objectPeriods["Y"]; !objectPeriod.IsSameAs(rightPeriod) {
+		t.Fail()
 	}
 }

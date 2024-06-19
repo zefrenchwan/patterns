@@ -301,16 +301,25 @@ end; $$;
 alter procedure sgraphs.upsert_attributes owner to upa;
 
 -- sgraphs.upsert_links adds a role and its values to a relation
-create or replace procedure sgraphs.upsert_links(p_id text, p_role text, p_values text[])
+create or replace procedure sgraphs.upsert_links(p_id text, p_role text, p_values text[], p_periods text[])
 language plpgsql as $$
 declare 
 	l_element text;
 	l_type int;
 	l_new_role_id bigint;
+	l_period text;
+	l_index int;
+	l_size int;
+	l_new_period_id bigint;
 begin 
 
 	if not exists (select 1 from sgraphs.elements where element_id = p_id) then 
 		raise exception 'no match for relaton %', p_id using errcode = 'P0002';
+	end if;
+
+	select array_length(p_values,1) into l_size; 
+	if l_size <> array_length(p_periods,1) then 
+		raise exception 'different sizes for periods and values' using errcode = '22023';
 	end if;
 
 	foreach l_element in array p_values loop 
@@ -335,12 +344,13 @@ begin
 	insert into sgraphs.relation_role(relation_id, role_in_relation)
 	select p_id, p_role returning relation_role_id into l_new_role_id;
 
-	with all_role_values as (
-		select l_new_role_id as relation_role_id, unnest(p_values) as relation_value
-	)
-	insert into sgraphs.relation_role_values(relation_role_id, relation_value)
-	select ARV.relation_role_id, ARV.relation_value from all_role_values ARV;
-
+	for l_index in 1..l_size loop
+		-- insert period and get its id
+		call sgraphs.insert_period(p_periods[l_index], l_new_period_id);
+		-- insert value
+		insert into sgraphs.relation_role_values(relation_role_id, relation_value, relation_period_id)
+		select l_new_role_id, p_values[l_index], l_new_period_id;
+	end loop;
 end; $$;
 
 alter procedure sgraphs.upsert_links owner to upa;

@@ -2,7 +2,6 @@ package storage
 
 import (
 	"errors"
-	"slices"
 
 	"github.com/zefrenchwan/patterns.git/graphs"
 	"github.com/zefrenchwan/patterns.git/nodes"
@@ -52,8 +51,8 @@ type ElementDTO struct {
 	Traits   []string `json:"traits,omitempty"`
 	Activity []string `json:"activity,omitempty"`
 
-	Attributes []EntityValueDTO    `json:"attributes,omitempty"`
-	Roles      map[string][]string `json:"roles,omitempty"`
+	Attributes []EntityValueDTO                  `json:"attributes,omitempty"`
+	Roles      map[string][]RelationRoleValueDTO `json:"roles,omitempty"`
 }
 
 // EntityValueDTO is a DTO for entity values
@@ -61,6 +60,12 @@ type EntityValueDTO struct {
 	AttributeName  string   `json:"attribute"`
 	AttributeValue string   `json:"value"`
 	Periods        []string `json:"validity,omitempty"`
+}
+
+// RelationRoleValueDTO is a single operand in a relation for a given role
+type RelationRoleValueDTO struct {
+	Operand string   `json:"operand"`
+	Periods []string `json:"validity,omitempty"`
 }
 
 // IsEntityDTO returns true for an entity
@@ -86,9 +91,19 @@ func SerializeElement(e nodes.Element) ElementDTO {
 	dto.Activity = SerializePeriodsForDTO(e.ActivePeriod())
 
 	if relation, ok := e.(nodes.FormalRelation); ok {
-		dto.Roles = make(map[string][]string)
-		for role, values := range relation.ValuesPerRole() {
-			dto.Roles[role] = slices.Clone(values)
+		dto.Roles = make(map[string][]RelationRoleValueDTO)
+		for role, operands := range relation.PeriodValuesPerRole() {
+			values := make([]RelationRoleValueDTO, 0)
+			for value, period := range operands {
+				values = append(values, RelationRoleValueDTO{
+					Operand: value,
+					Periods: SerializePeriodsForDTO(period),
+				})
+			}
+
+			if len(values) != 0 {
+				dto.Roles[role] = values
+			}
 		}
 	} else if entity, ok := e.(*nodes.Entity); ok {
 		for _, attr := range entity.Attributes() {
@@ -124,12 +139,24 @@ func DeserializeElement(dto ElementDTO) (nodes.Element, error) {
 	id := dto.Id
 	roles := dto.Roles
 	if len(roles) != 0 {
-		relation := nodes.NewRelationWithIdAndRoles(id, dto.Traits, roles)
-		if err := relation.SetActivePeriod(activity); err != nil {
-			return result, err
+		var globalErr error
+		relation := nodes.NewRelationWithId(id, dto.Traits)
+		for role, values := range roles {
+			for _, value := range values {
+				if period, err := DeserializePeriodForDTO(value.Periods); err != nil {
+					globalErr = errors.Join(globalErr, err)
+				} else {
+					relation.AddPeriodValueForRole(role, value.Operand, period)
+				}
+			}
 		}
 
-		return &relation, nil
+		if err := relation.SetActivePeriod(activity); err != nil {
+			globalErr = errors.Join(globalErr, err)
+			return result, globalErr
+		}
+
+		return &relation, globalErr
 	} else {
 		entity, errEntity := nodes.NewEntityWithId(id, dto.Traits, activity)
 		if errEntity != nil {

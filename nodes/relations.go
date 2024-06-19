@@ -39,13 +39,13 @@ type Relation struct {
 	links map[string]map[string]Period
 }
 
-// NewUnlinkedRelation creates a relation with given traits
-func NewUnlinkedRelation(traits []string) Relation {
-	return NewUnlinkedRelationWithId(uuid.NewString(), traits)
+// NewRelation creates a relation with given traits
+func NewRelation(traits []string) Relation {
+	return NewRelationWithId(uuid.NewString(), traits)
 }
 
-// NewUnlinkedRelationWithId creates a relation with provided id and given traits
-func NewUnlinkedRelationWithId(id string, traits []string) Relation {
+// NewRelationWithId creates a relation with provided id and given traits
+func NewRelationWithId(id string, traits []string) Relation {
 	var relation Relation
 	relation.id = id
 	relation.activity = NewFullPeriod()
@@ -53,72 +53,6 @@ func NewUnlinkedRelationWithId(id string, traits []string) Relation {
 	slices.Sort(relation.traits)
 	relation.traits = slices.Compact(relation.traits)
 	return relation
-}
-
-// NewRelation creates a relation with given traits for a given subject.
-func NewRelation(subject string, traits []string) Relation {
-	return NewRelationWithId(uuid.NewString(), subject, traits)
-}
-
-// NewRelationWithIdAndRoles builds a new relation with id, traits and roles
-func NewRelationWithIdAndRoles(id string, traits []string, roles map[string][]string) Relation {
-	result := NewUnlinkedRelationWithId(id, traits)
-	result.links = make(map[string]map[string]Period)
-	for role, values := range roles {
-		if len(values) == 0 {
-			continue
-		}
-
-		result.SetValuesForRole(role, values)
-	}
-
-	return result
-}
-
-// NewTimeDependentRelation returns a relation true for a given period
-func NewTimeDependentRelation(subject string, traits []string, period Period) Relation {
-	result := NewRelation(subject, traits)
-	result.activity = NewPeriodCopy(period)
-	return result
-}
-
-// NewRelationWithId creates a relation with a given id
-func NewRelationWithId(id string, subject string, traits []string) Relation {
-	return NewMultiRelationWithId(id, []string{subject}, traits)
-}
-
-// NewMultiRelation creates a relation with given traits and multiple subjects.
-// It allows subject to be a group of persons, for instance
-func NewMultiRelation(subjects []string, traits []string) Relation {
-	return NewMultiRelationWithId(uuid.NewString(), subjects, traits)
-}
-
-// NewTimeDependentMultiRelation returns a new relation with given traits, subjects, and true during period only
-func NewTimeDependentMultiRelation(subjects []string, traits []string, period Period) Relation {
-	result := NewMultiRelationWithId(uuid.NewString(), subjects, traits)
-	result.activity = NewPeriodCopy(period)
-	return result
-}
-
-// NewMultiRelationWithId creates a new multi relation with a specific id
-func NewMultiRelationWithId(id string, subjects []string, traits []string) Relation {
-	var result Relation
-	result.id = id
-	result.activity = NewFullPeriod()
-
-	if len(subjects) != 0 {
-		result.SetValuesForRole(RELATION_ROLE_SUBJECT, subjects)
-	}
-
-	if len(traits) == 0 {
-		return result
-	}
-
-	singleTraits := make([]string, len(traits))
-	copy(singleTraits, traits)
-	slices.Sort(singleTraits)
-	result.traits = slices.Compact(singleTraits)
-	return result
 }
 
 // Id returns the id of the relation
@@ -145,7 +79,7 @@ func (r *Relation) ValuesPerRole() map[string][]string {
 
 		index := 0
 		copyValues := make([]string, len(values))
-		for value, _ := range values {
+		for value := range values {
 			copyValues[index] = value
 			index++
 		}
@@ -173,60 +107,48 @@ func (r *Relation) PeriodValuesPerRole() map[string]map[string]Period {
 	return result
 }
 
-// SetPeriodValuesForRole set those values exactly for that role and during that period exactly
-func (r *Relation) SetPeriodValuesForRole(role string, linkedIds []string, period Period) error {
+// ClearRoleValues deletes all values for a given role
+func (r *Relation) ClearRoleValues(role string) {
+	if r == nil {
+		return
+	} else if len(r.links) == 0 {
+		return
+	}
+
+	delete(r.links, role)
+}
+
+// AddPeriodValueForRole adds period for this element in that role
+func (r *Relation) AddPeriodValueForRole(role string, linkedId string, period Period) error {
 	if r == nil {
 		return errors.New("nil relation")
+	}
+
+	if period.IsEmptyPeriod() {
+		return nil
 	}
 
 	if r.links == nil {
 		r.links = make(map[string]map[string]Period)
 	}
 
-	delete(r.links, role)
-	if period.IsEmptyPeriod() {
-		return nil
+	if r.links[role] == nil {
+		r.links[role] = make(map[string]Period)
 	}
 
-	r.links[role] = make(map[string]Period)
-	for _, linkedId := range linkedIds {
+	switch previousPeriod, found := r.links[role][linkedId]; found {
+	case true:
+		previousPeriod.Add(period)
+		r.links[role][linkedId] = previousPeriod
+	case false:
 		r.links[role][linkedId] = NewPeriodCopy(period)
 	}
 
 	return nil
 }
 
-// AddPeriodValuesForRole adds period for all elements in that role
-func (r *Relation) AddPeriodValuesForRole(role string, linkedIds []string, period Period) error {
-	if r == nil {
-		return errors.New("nil relation")
-	}
-
-	if period.IsEmptyPeriod() {
-		return nil
-	}
-
-	if r.links == nil {
-		r.links = make(map[string]map[string]Period)
-	} else if r.links[role] == nil {
-		r.links[role] = make(map[string]Period)
-	}
-
-	for _, linkedId := range linkedIds {
-		switch previousPeriod, found := r.links[role][linkedId]; found {
-		case true:
-			previousPeriod.Add(period)
-			r.links[role][linkedId] = previousPeriod
-		case false:
-			r.links[role][linkedId] = NewPeriodCopy(period)
-		}
-	}
-
-	return nil
-}
-
-// RemovePeriodValuesForRole removes period for all elements in that role
-func (r *Relation) RemovePeriodValuesForRole(role string, linkedIds []string, period Period) error {
+// RemovePeriodValueForRole removes period for this element in that role
+func (r *Relation) RemovePeriodValueForRole(role string, linkedId string, period Period) error {
 	if r == nil {
 		return errors.New("nil relation")
 	}
@@ -235,12 +157,10 @@ func (r *Relation) RemovePeriodValuesForRole(role string, linkedIds []string, pe
 		return nil
 	}
 
-	for _, linkedId := range linkedIds {
-		if previous, found := r.links[role][linkedId]; found {
-			previous.Remove(period)
-			if previous.IsEmptyPeriod() {
-				delete(r.links[role], linkedId)
-			}
+	if previous, found := r.links[role][linkedId]; found {
+		previous.Remove(period)
+		if previous.IsEmptyPeriod() {
+			delete(r.links[role], linkedId)
 		}
 	}
 
@@ -257,7 +177,14 @@ func (r *Relation) SetValuesForRole(role string, linkedIds []string) error {
 		return errors.New("nil relation")
 	}
 
-	return r.SetPeriodValuesForRole(role, linkedIds, NewFullPeriod())
+	r.ClearRoleValues(role)
+	var globalErr error
+	for _, linkedId := range linkedIds {
+		currentErr := r.AddPeriodValueForRole(role, linkedId, NewFullPeriod())
+		globalErr = errors.Join(globalErr, currentErr)
+	}
+
+	return globalErr
 }
 
 // AddTrait appends a trait to the set of traits (no duplicate)
