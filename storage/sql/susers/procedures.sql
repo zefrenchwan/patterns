@@ -165,72 +165,6 @@ end; $$;
 
 alter function susers.roles_for_resource owner to upa;
 
--- susers.upsert_user changes password of an existing user, or creates user if possible. 
-create or replace procedure susers.upsert_user(
-	p_creator in text, p_login in text, p_new_password in text) 
-language plpgsql as $$
-declare 
-	-- is creator user active
-	l_active bool;
-	-- id of the user, if any, to upsert password for
-	l_user text;
-	-- all access rights, if any, for p_creator
-	l_access_rights text[];
-	-- true means authorized, false for no authorization for creator
-	l_authorized bool;
-	-- salt of the user
-	l_salt text; 
-	-- hashed password
-	l_text_hash text;
-begin 
-
-	-- creator has to be active. Otherwise raise exception  
-	select user_active into l_active
-	from susers.users 
-	where user_login = p_creator;
-
-	if l_active is null or not l_active then 
-		raise exception 'auth failure: no access for %', p_creator using errcode = '42501';
-	end if;
-
-	-- find other user to act on
-	select user_id into l_user 
-	from susers.users 
-	where user_login = p_login;
-
-	if l_user is null then 
-		raise exception 'auth failure: no user %', p_login using errcode = '42501';
-	end if;
-
-	select susers.roles_for_resource(p_creator, 'user', l_user) into l_access_rights;
-
-	select 'manager' = ANY(susers.roles_for_resource(p_creator,'user',l_user)) into l_authorized;
-
-	if p_creator = p_login and not l_authorized then 
-		select 'modifier' = ANY(susers.roles_for_resource(p_creator,'user',l_user)) into l_authorized;
-	end if;
-
-	if not l_authorized then 
-		raise exception 'auth failure: % unauthorized', p_creator using errcode = '42501';
-	end if;
-
-	select susers.generate_random_string() into l_salt;
-	
-	select encode(sha256((p_new_password || l_salt)::bytea), 'base64') into l_text_hash;
-    
-	if l_user is null then
-		insert into susers.users(user_id, user_active, user_login, user_salt, user_secret, user_hash)
-		select gen_random_uuid(), true, p_login, l_salt, susers.generate_random_string(), l_text_hash;
-	else 
-		update susers.users 
-		set user_salt = l_salt, 
-		user_secret = susers.generate_random_string(), 
-		user_hash = l_text_hash
-		where user_id = l_user;
-	end if;	
-end; $$;
-
-alter procedure susers.upsert_user owner to upa;
 
 -- susers.test_if_resource_exists returns true if resource exists by id for a given class, false otherwise
 create or replace function susers.test_if_resource_exists(p_class text, p_resource text) 
@@ -240,7 +174,7 @@ declare
 begin 
 	if p_class = 'user' then 
 		select true into l_found 
-		from sgraphs.users
+		from susers.users
 		where user_id = p_resource;
 	elsif p_class = 'graph' then 
 		select true into l_found 

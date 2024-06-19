@@ -70,3 +70,61 @@ func upsertUserHandler(wrapper ServiceParameters, w http.ResponseWriter, r *http
 		return NewServiceInternalServerError(message)
 	}
 }
+
+// lockUserHandler inactivates user if authorizations match
+// No action if user does not exist
+func lockUserHandler(wrapper ServiceParameters, w http.ResponseWriter, r *http.Request) error {
+	defer r.Body.Close()
+
+	currentUser, hasUser := wrapper.CurrentUser()
+	if !hasUser {
+		return NewServiceForbiddenError("need authentication")
+	}
+
+	userToLock := r.PathValue("login")
+
+	errLocking := wrapper.Dao.LockUser(wrapper.Ctx, currentUser, userToLock)
+	if errLocking != nil {
+		return BuildApiErrorFromStorageError(errLocking)
+	}
+
+	return nil
+}
+
+// unlockUserHandler activates user if authorizations match.
+// No action if user does not exist
+func unlockUserHandler(wrapper ServiceParameters, w http.ResponseWriter, r *http.Request) error {
+	defer r.Body.Close()
+
+	currentUser, hasUser := wrapper.CurrentUser()
+	if !hasUser {
+		return NewServiceForbiddenError("need authentication")
+	}
+
+	userToUnlock := r.PathValue("login")
+
+	errUnlocking := wrapper.Dao.UnlockUser(wrapper.Ctx, currentUser, userToUnlock)
+	if errUnlocking != nil {
+		return BuildApiErrorFromStorageError(errUnlocking)
+	}
+
+	return nil
+}
+
+// deleteUserHandler deletes the user
+func deleteUserHandler(wrapper ServiceParameters, w http.ResponseWriter, r *http.Request) error {
+	defer r.Body.Close()
+
+	currentUser, hasUser := wrapper.CurrentUser()
+	if !hasUser {
+		return NewServiceForbiddenError("need authentication")
+	}
+
+	userToDelete := r.PathValue("login")
+	errDelete := wrapper.Dao.DeleteUser(wrapper.Ctx, currentUser, userToDelete)
+	if errDelete != nil {
+		return BuildApiErrorFromStorageError(errDelete)
+	}
+
+	return nil
+}

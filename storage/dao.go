@@ -95,6 +95,36 @@ func (d *Dao) UpsertUser(ctx context.Context, creator, login, password string) e
 	return errExec
 }
 
+// LockUser flags user as inactive
+func (d *Dao) LockUser(ctx context.Context, actor, login string) error {
+	if d == nil || d.pool == nil {
+		return errors.New("nil value")
+	}
+
+	_, errExec := d.pool.Exec(ctx, "call susers.lock_user($1,$2)", actor, login)
+	return errExec
+}
+
+// UnlockUser flags user as active
+func (d *Dao) UnlockUser(ctx context.Context, actor, login string) error {
+	if d == nil || d.pool == nil {
+		return errors.New("nil value")
+	}
+
+	_, errExec := d.pool.Exec(ctx, "call susers.unlock_user($1,$2)", actor, login)
+	return errExec
+}
+
+// DeleteUser deletes any information about the user
+func (d *Dao) DeleteUser(ctx context.Context, actor, login string) error {
+	if d == nil || d.pool == nil {
+		return errors.New("nil value")
+	}
+
+	_, errExec := d.pool.Exec(ctx, "call susers.delete_user($1,$2)", actor, login)
+	return errExec
+}
+
 // CreateGraph returns the id of built graph, or an error.
 func (d *Dao) CreateGraph(ctx context.Context, creator, name, description string, metadata map[string][]string, sources []string) (string, error) {
 	if d == nil || d.pool == nil {
@@ -444,13 +474,6 @@ func (d *Dao) LoadGraphForUser(ctx context.Context, user string, graphId string)
 
 	// globalErr is nil, proceed to entities
 	// STEP TWO: ENTITIES
-	// Database contract is:
-	// susers.transitive_load_entities_in_graph(p_user_login text, p_id text)
-	// returns table (
-	// graph_id text, editable bool,
-	// element_id text, activity text, traits text[],
-	// equivalence_class text[], equivalence_class_graph text[],
-	// attribute_key text, attribute_values text[], attribute_periods text[]
 	const queryEntities = "select * from susers.transitive_load_entities_in_graph($1, $2) order by element_id, attribute_key asc"
 	rowsEntities, errEntities := d.pool.Query(ctx, queryEntities, user, graphId)
 	if errEntities != nil {
@@ -546,16 +569,6 @@ func (d *Dao) LoadGraphForUser(ctx context.Context, user string, graphId string)
 
 	// globalErr is nil, proceed to relations
 	// STEP THREE: RELATIONS
-
-	// database contract is:
-	// create or replace function susers.transitive_load_relations_in_graph(p_user_login text, p_id text)
-	// returns table (
-	// 	graph_id text, editable bool,
-	// 	element_id text, activity text, traits text[],
-	// 	equivalence_class text[], equivalence_class_graph text[],
-	// 	role_in_relation text, role_values text[], role_periods[]
-	// )
-
 	const queryRelations = "select * from susers.transitive_load_relations_in_graph($1, $2) order by element_id asc"
 	rowsRelation, errRelation := d.pool.Query(ctx, queryRelations, user, graphId)
 	if errRelation != nil {
