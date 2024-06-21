@@ -33,7 +33,7 @@ For an entity:
 
 For a relation:
 * **roles** and **values** as a map. For instance: subject = Paris, Object = Europe
-
+* values are time-dependent: they may appear in a relation during a given period, not the full relation lifecycle
 
 ### Metadata
 
@@ -47,12 +47,11 @@ A trait is not a simple label to put on elements.
 
 This project is a webapp not following REST standard. 
 
-Linked project [bootstrapper](https://github.com/zefrenchwan/bootstrapper) allows to init the first values to store and build relations with. 
-
 Its storage is currently a relational database (postgresql indeed). 
 
 The project contains:
 * **nodes** that defines the data model based on nodes in graphs
+* **graphs** that defines the graph data model based on nodes
 * **storage** that contains the storage system
 * **serving** that contains the webapp part
 
