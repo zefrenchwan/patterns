@@ -27,13 +27,6 @@ func InitService(dao storage.Dao, initialContext context.Context, logger *zap.Su
 	AddGetServiceHandlerToMux(mux, "/status/", checkStatusHandler, parameters)
 	AddPostServiceHandlerToMux(mux, "/token/", checkUserAndGenerateTokenHandler, parameters)
 	AddAuthenticatedPostServiceHandlerToMux(mux, "/user/upsert/", upsertUserHandler, parameters)
-	AddAuthenticatedGetServiceHandlerToMux(mux, "/user/list/", listUserResourcesHandler, parameters)
-	// likely to be refactored
-	AddAuthenticatedGetServiceHandlerToMux(mux, "/user/delete/{userId}/", deleteUserHandler, parameters)
-	AddAuthenticatedGetServiceHandlerToMux(mux, "/user/unlock/{userId}/", unlockUserHandler, parameters)
-	AddAuthenticatedGetServiceHandlerToMux(mux, "/user/lock/{userId}/", lockUserHandler, parameters)
-	AddAuthenticatedGetServiceHandlerToMux(mux, "/user/manage/{action}/role/{role}/class/{class}/to/{userId}/resources/all/", manageAuthForAllResourcesUserHandler, parameters)
-	AddAuthenticatedGetServiceHandlerToMux(mux, "/user/manage/{action}/role/{role}/class/{class}/to/{userId}/resource/{resource}/", manageAuthForSpecificResourceUserHandler, parameters)
 	// GRAPHS OPERATIONS
 	AddAuthenticatedPostServiceHandlerToMux(mux, "/graph/create/", createGraphHandler, parameters)
 	AddAuthenticatedGetServiceHandlerToMux(mux, "/graph/delete/{graphId}/", deleteGraphHandler, parameters)

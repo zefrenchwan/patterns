@@ -26,7 +26,7 @@ begin
 
     if p_class_name = 'graph' and not exists (select 1 from sgraphs.graphs where graph_id = p_new_id) then 
         raise exception 'no graph %', p_new_id using errcode = 'P0002';
-    elsif p_class_name = 'user' and not exists (select 1 from susers where user_id = p_new_id) then 
+    elsif p_class_name = 'user' and not exists (select 1 from susers.users where user_id = p_new_id) then 
         raise exception 'no user %', p_new_id using errcode = 'P0002';
     end if;
 
@@ -40,12 +40,12 @@ language plpgsql as $$
 declare 
  l_class_id int;
 begin 
-    select class_id into l_class_id from susers.classes where class_name = p_class_name;
+    select class_id into l_class_id from susers.classes where class_name = p_resource_class;
     if l_class_id is null then 
-		raise exception 'unexpected class %', p_class_name using errcode = '42704';	
+		raise exception 'unexpected class %', p_resource_class using errcode = '42704';	
 	end if;
 
-	delete from susers.resources where resource_id = p_resource and resource_type = l_class_id;
+	delete from susers.resources where resource_id = p_resource_id and resource_type = l_class_id;
 end; $$;
 
 -- susers.all_graphs_authorized_for_user 
@@ -56,7 +56,7 @@ begin
 	return query 
 	with all_graphs_current_auths as (
 		select AUA.role_name, AUA.auth_all_resources, 
-		AUA.resource_included, AUA.resource
+		AUA.auth_inclusion, AUA.resource
 		from susers.all_users_authorizations AUA
 		where AUA.class_name = 'graph'
 		and AUA.user_login = p_login
@@ -64,7 +64,7 @@ begin
 	), all_resources_unauth as (
 		select AGC.resource, AGC.role_name
 		from all_graphs_current_auths AGC 
-		where AGC.resource_included = false
+		where AGC.auth_inclusion = false
 		and AGC.resource is not null
 	), all_resources_auth as (
 		select GRA.graph_id as resource, AGC.role_name
@@ -75,7 +75,7 @@ begin
 	), specific_resources_auth as (
 		select AGC.resource, AGC.role_name
 		from all_graphs_current_auths AGC
-		where AGC.resource_included = true
+		where AGC.auth_inclusion = true
 		and AGC.resource is not null
 	), all_auths as (
 		select distinct SRA.resource, SRA.role_name 
@@ -133,23 +133,35 @@ begin
 	-- If we revoke values, then remove granted said values.
 	-- Either specific resource, or all resources, 
 	-- each delete affects one case and one case only. 
-	delete from susers.resources_authorizations
-	where resource_included = not p_grant_access 
-	and p_all_resouces and p_resource is null
-	and auth_role_id = l_role_id 
-	and auth_class_id = l_class_id
-	and auth_user_id = p_user_id;
-	delete from susers.resources_authorizations
-	where resource_included = not p_grant_access 
-	and not p_all_resouces and resource = p_resource
-	and auth_role_id = l_role_id 
-	and auth_class_id = l_class_id
-	and auth_user_id = p_user_id;
+	if p_all_resources then 
+		delete from susers.authorizations
+		where auth_inclusion = not p_grant_access 
+		and p_all_resources and p_resource is null
+		and auth_role_id = l_role_id 
+		and auth_class_id = l_class_id
+		and auth_user_id = p_user_id;
+	else 
+		select auth_id into l_auth_id
+		from susers.authorizations
+		where auth_inclusion = not p_grant_access 
+		and not p_all_resources 
+		and auth_role_id = l_role_id 
+		and auth_class_id = l_class_id
+		and auth_user_id = p_user_id;
+
+		delete from susers.resources_authorizations
+		where auth_id = l_auth_id and resource = p_resource;
+
+		if not exists (select 1 from susers.resources_authorizations where auth_id = l_auth_id) then 
+			delete from susers.authorizations where auth_id = l_auth_id;
+		end if;
+	end if;
+	
 	-- if all resources are set, then clear specific cases
 	-- and clear previous values to force the new one 
 	if p_all_resources then 
-		delete from susers.resources_authorizations
-		where resource_included = p_grant_access
+		delete from susers.authorizations
+		where auth_inclusion = p_grant_access
 		and auth_role_id = l_role_id 
 		and auth_class_id = l_class_id
 		and auth_user_id = p_user_id;
@@ -184,10 +196,10 @@ begin
 		return;
 	elsif not exists (
             select 1 from susers.resources_authorizations
-            where auth_id = l_auth_id and resource = p_resource and resource_included = p_grant_access
+            where auth_id = l_auth_id and resource = p_resource and auth_inclusion = p_grant_access
         ) then  
             -- insert specific resource case because we don't have it yet
-            insert into susers.resources_authorizations(auth_id, resource, resource_included)
+            insert into susers.resources_authorizations(auth_id, resource, auth_inclusion)
             select l_auth_id, p_resource, p_grant_access where p_resource is not null;  
 	end if;
 end;$$;
@@ -196,13 +208,13 @@ alter procedure susers.change_access_to_user_for_resource owner to upa;
 
 -- susers.grant_access_to_user_for_resource grants access to resource (not null) or all resources (if null)
 create or replace procedure susers.grant_access_to_user_for_resource(
-	p_user_id text, p_class_name text, p_role_name text, p_resource text
+	p_user_login text, p_class_name text, p_role_name text, p_resource text
 ) language plpgsql as $$
 declare 
     l_user_id text;
 	l_all_resources bool;
 begin 
-    select USR.user_name into l_user_id from susers.users USR where user_login = p_user_login;
+    select USR.user_id into l_user_id from susers.users USR where user_login = p_user_login;
     if l_user_id is null then 
         raise exception 'no user %', p_user_login using errcode = 'P0002';
     end if;
@@ -279,7 +291,7 @@ begin
 	-- resource is valid for that class
 
     -- no role, no action, it is accepted
-	if array_length(p_role_names) > 0 then 
+	if array_length(p_role_names, 1) > 0 then 
         return;
     end if;
 
@@ -299,30 +311,30 @@ begin
 		-- role exists
 
         with user_access as (
-            select AUT.auth_all_resources, RAU.resource, RAU.resource_included
+            select AUT.auth_all_resources, RAU.resource, RAU.auth_inclusion
             from susers.authorizations AUT 
             left outer join susers.resources_authorizations RAU on RAU.auth_id = AUT.auth_id
-            where AUT.auth_role_id = 4
-            and AUT.auth_class_id = 2
-            and AUT.auth_user_id = 'kfdlkfdlsk'
+            where AUT.auth_role_id = l_role_id
+            and AUT.auth_class_id = l_class_id
+            and AUT.auth_user_id = l_user_id
         ), specific_access_accept as (
             select 1 as validation
             from user_access UAC
             where UAC.auth_all_resources = false 
-            and UAC.resource = 'opop'
-            and UAC.resource_included = true
+            and UAC.resource = p_resource
+            and UAC.auth_inclusion = true
         ), all_access_reject as (
             select -100 as validation
             from user_access UAC
             where UAC.auth_all_resources = true 
-            and UAC.resource = 'opop'
-            and UAC.resource_included = false
+            and UAC.resource = p_resource
+            and UAC.auth_inclusion = false
         ), all_access_accept as (
             select 1 as validation
             from user_access UAC
             where UAC.auth_all_resources = true 
             and UAC.resource is null 
-            and UAC.resource_included is null
+            and UAC.auth_inclusion is null
         ), decision_table as (
             select validation
             from specific_access_accept

@@ -3,10 +3,6 @@ create or replace procedure susers.create_graph_from_scratch(
 	p_user in text, p_new_id text, p_name in text, p_description in text
 ) language plpgsql as $$
 declare 
-    l_global_auth text[];
-    l_resource_auth text[];
-    l_auth bool;
-    l_current_graph text;
 begin
     if exists (
         select 1 from sgraphs.graphs where graph_id = p_new_id
@@ -30,10 +26,6 @@ create or replace procedure susers.create_graph_from_imports(
 	p_user in text, p_new_id text, p_name in text, p_description in text, p_imported_graphs in text[]
 ) language plpgsql as $$
 declare 
-    l_global_auth text[];
-    l_resource_auth text[];
-    l_auth bool;
-    l_current_graph text;
     l_refused_auths text[];
 begin
     if exists (select 1 from sgraphs.graphs where graph_id = p_new_id) then 
@@ -52,14 +44,14 @@ begin
     ), all_nonauth_graphs as (
         select AIG.graph_id
         from all_imported_graphs AIG 
-        left outer join all_graphs_authorized_for_user(p_user) AGA on AGA.graph_id = AIG.graph_id
+        left outer join susers.all_graphs_authorized_for_user(p_user) AGA on AGA.resource = AIG.graph_id
         where ('observer' = ANY(AGA.role_names) or 'modifier' = ANY(AGA.role_names)) 
-        and AGA.graph_id is null 
+        and AGA.resource is null 
     ) 
     select array_agg(ANG.graph_id) into l_refused_auths
     from all_nonauth_graphs ANG ;
     
-    if array_length(all_nonauth_graphs, 1) != 0 then 
+    if array_length(l_refused_auths, 1) != 0 then 
         raise exception 'graphs % do not exist', l_refused_auths using errcode = '42704';
     end if;
 
@@ -111,7 +103,7 @@ begin
     GRA.graph_name, GRA.graph_description,
     ENT.entry_key as graph_md_key, ENT.entry_values as graph_md_values
     from sgraphs.graphs GRA
-    join susers.all_graphs_authorized_for_user(p_user) GRO ON GRO.graph_id = GRA.graph_id
+    join susers.all_graphs_authorized_for_user(p_user) GRO ON GRO.resource = GRA.graph_id
     left outer join sgraphs.graph_entries ENT on ENT.graph_id = GRA.graph_id;
 end; $$;
 
@@ -142,7 +134,7 @@ begin
     -- test if user exists. If not, return null, null
     select user_id into l_user_id from susers.users where user_active and user_login = p_user_login;
     if l_user_id is null then 
-        return query select null, null;
+        return query select null::text, null::text[] where 1 != 1;
         return;
     end if;
 
@@ -153,26 +145,30 @@ begin
     -- create direct neighbors table if it does not exist
     create temporary table if not exists 
     temp_table_graphs_neighbors(walkthrough_id text, graph_id text, roles text[], parent_id text);
+    create temporary table if not exists 
+    temp_table_graphs_imports(walkthrough_id text, height int, graph_id text, roles text[]);
     -- insert values for neighbors 
     with visible_graphs as (
         select AGA.resource as graph_id, AGA.role_names
-        from susers.all_graphs_authorized_for_user('root') AGA
+        from susers.all_graphs_authorized_for_user(p_user_login) AGA
         where 'modifier' =ANY(AGA.role_names) or 'observer' =ANY(AGA.role_names)
     ), parents_graphs as (
         select GRA.graph_id, GRA.role_names, 
         INC.source_id as parent_id
         from visible_graphs GRA
         left outer join sgraphs.inclusions INC on INC.child_id = GRA.graph_id
-        join visible_graphs PAR on INC.source_id = PAR.graph_id
+        left outer join visible_graphs PAR on INC.source_id = PAR.graph_id
+        where ((INC.source_id is null and PAR.graph_id is null) 
+            or (INC.source_id is not null and PAR.graph_id is not null))
     )
     insert into temp_table_graphs_neighbors(walkthrough_id, graph_id, roles, parent_id)
     select l_walkthrough_id, PGR.graph_id, PGR.role_names as roles, PGR.parent_id 
     from parents_graphs PGR;
 
     -- graph may not exist or may be invisible
-    if not exists (select 1 from temp_table_graphs_neighbors where graph_id = p_id) then 
+    if not exists (select 1 from temp_table_graphs_neighbors TTG where TTG.graph_id = p_id) then 
         delete from temp_table_graphs_neighbors where walkthrough_id = l_walkthrough_id;
-        return query select null, null where 1 != 1;
+        return query select null::text, null::text[] where 1 != 1;
         return;
     end if;
 
@@ -180,12 +176,12 @@ begin
     l_height = 1;
     -- insert first value: the current graph 
     insert into temp_table_graphs_imports(walkthrough_id, height, graph_id, roles)
-    select l_walkthrough_id, l_height, graph_id, roles 
-    from temp_table_graphs_neighbors where graph_id = pid;
+    select l_walkthrough_id, l_height, TTGN.graph_id, TTGN.roles 
+    from temp_table_graphs_neighbors TTGN where TTGN.graph_id = p_id;
 
     loop 
         with all_current_childs as (
-            select TTG1.graph_id 
+            select TTG1.graph_id, TTG1.roles 
             from temp_table_graphs_imports TTG1
             where walkthrough_id = l_walkthrough_id 
             and TTG1.height <= l_height
@@ -193,26 +189,27 @@ begin
                 'modifier' = ANY(TTG1.roles) or 
                 'observer' = ANY(TTG1.roles)
             )
-        ), all_parents as (
+        ), all_parents_of_current_childs as (
+            -- get parent of the graph (seen as a child, then, and linked roles)
             select TTGN.parent_id as graph_id, TTGN.roles 
             from temp_table_graphs_neighbors TTGN 
-            join all_current_childs ACC on ACC.graph_id = TTGN.graph_id 
+            join all_current_childs ACC on ACC.graph_id = TTGN.graph_id
+            where TTGN.parent_id is not null 
+            and (
+                'modifier' = ANY(TTGN.roles) or 
+                'observer' = ANY(TTGN.roles)
+            ) 
         ), all_new_parents_roles as (
-            select APA.graph_id, APA.roles
-            from all_parents APA 
+            -- get all parents but exclude the ones we have already added, 
+            -- that is already in all_current_childs
+            select distinct APA.graph_id, APA.roles
+            from all_parents_of_current_childs APA 
             left outer join all_current_childs ACC on ACC.graph_id = APA.graph_id 
             where ACC.graph_id is null 
-        ), all_auth_parents as (
-            select distinct ANPR.graph_id, ANPR.roles
-            from all_new_parents_roles ANPR
-            where  (
-                'modifier' = ANY(ANPR.roles) or 
-                'observer' = ANY(ANPR.roles)
-            )
         )
         insert into temp_table_graphs_imports(walkthrough_id, height, graph_id, roles)
-        select distinct l_walkthrough_id, l_height + 1, AAP.graph_id, AAP.roles
-        from all_auth_parents AAP;
+        select l_walkthrough_id, l_height + 1, ANP.graph_id, ANP.roles
+        from all_new_parents_roles ANP;
 
         -- test if we inserted something
         if not exists (
@@ -599,7 +596,7 @@ begin
 	if exists (
 		select 1
 		from sgraphs.relation_role_values RRV
-		where p_element_id = RRV.relation_value
+		where RRV.relation_value = p_element_id;
 	) then 
 		raise exception 'a relation depends on current element to delete' using errcode = '23503';
 	end if;
@@ -666,24 +663,21 @@ declare
 	l_auth bool;
     l_class_id int;
 begin
-        
-    with aggregated_roles_over_graphs as (
-        select array_agg(ROL.role_name) as active_roles
-        from susers.roles ROL
-        join susers.authorizations AUT on AUT.auth_role_id = ROL.role_id
-        join susers.classes CLA on CLA.class_id = AUT.auth_class_id
-        join susers.users USR on USR.user_id = AUT.auth_user_id
-        where AUT.auth_active
-        and USR.user_active
-        and CLA.class_name = 'graph'
-        and AUT.auth_resource is null
-        and USR.user_login = p_user_login
-    )
-    select ARRAY['modifier','manager']  <@ AROG.active_roles into l_auth
-    from aggregated_roles_over_graphs AROG;
+
+    with all_graphs as (
+        select count(distinct GRA.graph_id) as all_counter 
+        from sgraphs.graphs GRA
+    ), all_auth_graphs as (
+        select count(distinct AGA.resource) as auth_counter
+        from susers.all_graphs_authorized_for_user(p_user_login) AGA
+        where 'manager' = ANY(AGA.role_names) 
+    ) select (auth_counter = all_counter) into l_auth
+    from all_graphs ALLG 
+    cross join all_auth_graphs AUTG;
 
     if l_auth is null or not l_auth then 
-        raise exception 'auth failure: cannot clear graphs' using errcode = '';
+        raise exception 'some unauthorized graphs' using errcode = '42501';
+        return;
     end if;
 
     select class_id into l_class_id from susers.classes where class_name = 'graph';
@@ -693,65 +687,9 @@ begin
     delete from sgraphs.graphs;
     delete from sgraphs.traits;
     delete from sgraphs.periods;
-    delete from susers.authorizations where auth_resource is not null and auth_class_id = l_class_id;
+    delete from susers.authorizations where not auth_all_resources and auth_class_id = l_class_id;
     delete from susers.resources where resource_type = l_class_id;
 
-    end; $$;
+end; $$;
 
 alter procedure susers.clear_graphs owner to upa;
-
-
-
--- susers.list_authorized_graphs_for_any_roles finds graphs an user may access for given roles
-create or replace function susers.list_authorized_graphs_for_any_roles(p_user_login text, p_roles text[]) 
-returns table(graph_id text, role_names text[]) language plpgsql as $$
-declare 
-	l_user_id text;
-	l_class_id int;
-	l_matching_roles int[];
-	l_role text;
-begin 
-	select USR.user_id into l_user_id
-	from susers.users USR
-	where USR.user_login = p_user_login
-	and USR.user_active = true;
-
-	select array_agg(ROL.role_id) into l_matching_roles
-	from susers.roles ROL 
-	where ROL.role_name = ANY(p_roles);
-
-	select CLA.class_id into l_class_id 
-	from susers.classes CLA 
-	where CLA.class_name = 'graph';
-	
-	if l_class_id is null then 
-		raise exception 'invalid class provided' using errcode = '42704';
-	end if;
-
-	return query 
-	with roles_resources as (
-		select AUT.auth_resource as graph_id, ROL.role_name
-		from susers.authorizations AUT
-		join susers.roles ROL on AUT.auth_role_id = ROL.role_id
-		where l_user_id is not null 
-		and AUT.auth_user_id = l_user_id
-		and AUT.auth_active = true
-		and AUT.auth_role_id = ANY(l_matching_roles)
-		and AUT.auth_class_id = l_class_id
-		and AUT.auth_resource is null
-	), roles_graphs as (
-		select GRA.graph_id, ROR.role_name
-		from sgraphs.graphs GRA 
-		join roles_resources ROR on ROR.graph_id = GRA.graph_id
-		UNION 
-		select GRA.graph_id, ROR.role_name
-		from roles_resources ROR
-		cross join sgraphs.graphs GRA
-		where ROR.graph_id is null 
-	) 
-	select distinct ROG.graph_id, array_agg(ROG.role_name) as role_names
-	from roles_graphs ROG
-	group by ROG.graph_id;
-end;$$;
-
-alter function susers.list_authorized_graphs_for_any_roles owner to upa;

@@ -91,7 +91,7 @@ alter table susers.resources_authorizations owner to upa;
 create or replace view susers.all_users_authorizations 
 (user_id , user_login , user_active ,
 class_name , role_name , 
-auth_all_resources , resource_included , resource 
+auth_all_resources , auth_inclusion , resource 
 ) as 
 select 
 USR.user_id, 
@@ -100,7 +100,7 @@ USR.user_active,
 CLA.class_name,
 ROL.role_name,
 AUT.auth_all_resources, 
-RAU.resource_included, 
+AUT.auth_inclusion, 
 RAU.resource
 from susers.authorizations AUT 
 join susers.users USR on USR.user_id = AUT.auth_user_id
