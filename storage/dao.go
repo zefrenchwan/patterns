@@ -76,13 +76,88 @@ func (d *Dao) FindSecretForActiveUser(ctx context.Context, login string) (string
 
 	defer rows.Close()
 
-	rows.Next()
 	var result string
-	if err := rows.Scan(&result); err != nil {
+	if !rows.Next() {
+		return result, nil
+	} else if err := rows.Scan(&result); err != nil {
 		return result, err
+	} else {
+		return result, nil
+	}
+}
+
+// ListUserDataAndSupervisedUsers provides all visible data and supervised errors
+func (d *Dao) ListUserDataAndSupervisedUsers(ctx context.Context, login string) ([]UserAuthsDTO, error) {
+	if d == nil || d.pool == nil {
+		return nil, errors.New("nil value")
 	}
 
-	return result, nil
+	var rows pgx.Rows
+	if r, err := d.pool.Query(ctx, "select * from susers.list_user_data_and_supervised_user_data($1)", login); err != nil {
+		return nil, err
+	} else {
+		rows = r
+	}
+
+	userAuthValues := make(map[string]UserAuthsDTO)
+	defer rows.Close()
+	var globalErr error
+	for rows.Next() {
+		values, errValues := rows.Values()
+		if errValues != nil {
+			globalErr = errors.Join(globalErr, errValues)
+			continue
+		}
+
+		userId := values[0].(string)
+		userLogin := values[1].(string)
+		userActive := values[2].(bool)
+		roleName := values[3].(string)
+		className := values[4].(string)
+		allResources := values[5].(bool)
+		authResources := mapAnyToStringSlice(values[6])
+		unauthResources := mapAnyToStringSlice(values[7])
+
+		var currentUserDto UserAuthsDTO
+		if previous, found := userAuthValues[userId]; !found {
+			currentUserDto = UserAuthsDTO{
+				UserId:                  userId,
+				ActiveUser:              userActive,
+				Login:                   userLogin,
+				ClassRoleAuthorizations: make(map[string]map[string]AuthDTO),
+			}
+		} else {
+			currentUserDto = previous
+		}
+
+		if currentUserDto.ClassRoleAuthorizations[className] == nil {
+			currentUserDto.ClassRoleAuthorizations[className] = make(map[string]AuthDTO)
+		}
+
+		currentAuthDTO := AuthDTO{
+			AllAuthorized: allResources,
+		}
+
+		if !allResources && len(authResources) != 0 {
+			currentAuthDTO.AuthorizedResources = authResources
+		}
+
+		if !allResources && len(unauthResources) != 0 {
+			currentAuthDTO.AuthorizedResources = unauthResources
+		}
+
+		currentUserDto.ClassRoleAuthorizations[className][roleName] = currentAuthDTO
+		userAuthValues[userId] = currentUserDto
+	}
+
+	allValues := make([]UserAuthsDTO, len(userAuthValues))
+	index := 0
+	for _, value := range userAuthValues {
+		allValues[index] = value
+		index++
+	}
+
+	return allValues, globalErr
 }
 
 // UpsertUser changes user authentication if it exists, or insert user
@@ -96,22 +171,22 @@ func (d *Dao) UpsertUser(ctx context.Context, creator, login, password string) e
 }
 
 // LockUser flags user as inactive
-func (d *Dao) LockUser(ctx context.Context, actor, login string) error {
+func (d *Dao) LockUser(ctx context.Context, actor, userId string) error {
 	if d == nil || d.pool == nil {
 		return errors.New("nil value")
 	}
 
-	_, errExec := d.pool.Exec(ctx, "call susers.lock_user($1,$2)", actor, login)
+	_, errExec := d.pool.Exec(ctx, "call susers.lock_user($1,$2)", actor, userId)
 	return errExec
 }
 
 // UnlockUser flags user as active
-func (d *Dao) UnlockUser(ctx context.Context, actor, login string) error {
+func (d *Dao) UnlockUser(ctx context.Context, actor, userId string) error {
 	if d == nil || d.pool == nil {
 		return errors.New("nil value")
 	}
 
-	_, errExec := d.pool.Exec(ctx, "call susers.unlock_user($1,$2)", actor, login)
+	_, errExec := d.pool.Exec(ctx, "call susers.unlock_user($1,$2)", actor, userId)
 	return errExec
 }
 
@@ -123,6 +198,28 @@ func (d *Dao) DeleteUser(ctx context.Context, actor, login string) error {
 
 	_, errExec := d.pool.Exec(ctx, "call susers.delete_user($1,$2)", actor, login)
 	return errExec
+}
+
+// grantAllResourcesTo grants a role and a class to another user
+func (d *Dao) GrantAllResourcesTo(ctx context.Context, granter, login, role, class string) error {
+	if d == nil || d.pool == nil {
+		return errors.New("nil value")
+	}
+
+	_, errExec := d.pool.Exec(ctx, "call susers.grant_all_role_auth_to($1, $2, $3, $4)", granter, login, role, class)
+	return errExec
+}
+
+func (d *Dao) GrantResourcesTo(ctx context.Context, granter, login, role, class, resource string) error {
+	return nil
+}
+
+func (d *Dao) RevokeAllResourcesTo(ctx context.Context, granter, login, role, class string) error {
+	return nil
+}
+
+func (d *Dao) RevokeResourcesTo(ctx context.Context, granter, login, role, class, resource string) error {
+	return nil
 }
 
 // CreateGraph returns the id of built graph, or an error.
@@ -220,10 +317,6 @@ func (d *Dao) ListGraphsForUser(ctx context.Context, user string) ([]AuthGraphDT
 	values := make(map[string]AuthGraphDTO)
 
 	for rows.Next() {
-		// expecting
-		//  graph_id text, graph_roles text[],
-		// graph_name text, graph_description text,
-		// graph_md_key text, graph_md_values text[]
 		var rawData []any
 		if raw, err := rows.Values(); err != nil {
 			globalErr = errors.Join(globalErr, err)

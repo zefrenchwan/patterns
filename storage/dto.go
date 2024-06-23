@@ -12,6 +12,21 @@ const (
 	DATE_SERDE_FORMAT = "2006-01-02T15:04:05"
 )
 
+// AuthDTO provides resources, given role and class
+type AuthDTO struct {
+	AuthorizedResources   []string `json:"authorized,omitempty"`
+	UnauthorizedResources []string `json:"unauthorized,omitempty"`
+	AllAuthorized         bool     `json:"all"`
+}
+
+// UserAuthsDTO provides what an user may access
+type UserAuthsDTO struct {
+	UserId                  string                        `json:"user_id"`
+	Login                   string                        `json:"login"`
+	ActiveUser              bool                          `json:"active_user"`
+	ClassRoleAuthorizations map[string]map[string]AuthDTO `json:"authorizations,omitempty"`
+}
+
 // AuthGraphDTO contains graphs an user has access to
 type AuthGraphDTO struct {
 	Id          string              `json:"id"`

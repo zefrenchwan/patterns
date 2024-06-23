@@ -63,7 +63,7 @@ func validateAuthentication(wrapper ServiceParameters, r *http.Request) (string,
 	tokenValue := header[7:]
 	payloadEncoded := strings.Split(tokenValue, ".")[1]
 	if raw, err := base64.StdEncoding.DecodeString(payloadEncoded); err != nil {
-		return "", false, err
+		return "", false, errors.Join(err, errors.New("invalid value: "+payloadEncoded+"\t"+string([]byte(payloadEncoded)[92])))
 	} else if err := json.Unmarshal(raw, &payload); err != nil {
 		return "", false, err
 	}

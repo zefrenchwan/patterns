@@ -11,15 +11,16 @@ begin
     if exists (
         select 1 from sgraphs.graphs where graph_id = p_new_id
     ) then 
-        raise exception 'graph already exists';
+        raise exception 'graph already exists' using errcode = '42710';
     end if;
 
-    call susers.accept_any_user_access_to_resource_or_raise(p_user, 'graph', array['manager'], null);
+    call susers.accept_user_access_to_resource_or_raise(p_user, 'graph', array['manager'], true, null);
     -- create graph
     call sgraphs.create_graph(p_new_id, p_name, p_description);
     -- grant graph access
-    call susers.add_auth_for_user_on_resource(p_user, 'observer','graph', p_new_id);
-    call susers.add_auth_for_user_on_resource(p_user, 'modifier','graph', p_new_id);
+    call susers.insert_new_resource(p_user, 'graph', p_new_id);
+    call susers.grant_access_to_user_for_resource(p_user, 'graph', 'observer', p_new_id);
+    call susers.grant_access_to_user_for_resource(p_user, 'graph', 'modifier', p_new_id);
 end; $$;
 
 alter procedure susers.create_graph_from_scratch owner to upa;
@@ -33,34 +34,42 @@ declare
     l_resource_auth text[];
     l_auth bool;
     l_current_graph text;
+    l_refused_auths text[];
 begin
     if exists (select 1 from sgraphs.graphs where graph_id = p_new_id) then 
-        raise exception 'graph already exists';
+        raise exception 'graph already exists' using errcode = '42710';
     end if;
 
     if array_length(p_imported_graphs, 1) = 0 then 
-        raise exception 'need to import at least one graph';
+        raise exception 'need to import at least one graph' using errcode = '22023';
     end if;
 
     -- Security operations:
-    call susers.accept_any_user_access_to_resource_or_raise(p_user, 'graph', array['manager'], null);
+    call susers.accept_user_access_to_resource_or_raise(p_user, 'graph', array['manager'], true, null);
     -- test if graph exists and if user may see it
-    foreach l_current_graph in array p_imported_graphs loop 
-        if not exists (
-            select 1 from sgraphs.graphs where graph_id = l_current_graph 
-        ) then 
-            raise exception 'graph % does not exist', l_current_graph;
-        end if;
-
-        call susers.accept_any_user_access_to_resource_or_raise(p_user, 'graph', array['modifier', 'observer'], l_current_graph);
-    end loop;
+    with all_imported_graphs as (
+        select unnest(p_imported_graphs) as graph_id
+    ), all_nonauth_graphs as (
+        select AIG.graph_id
+        from all_imported_graphs AIG 
+        left outer join all_graphs_authorized_for_user(p_user) AGA on AGA.graph_id = AIG.graph_id
+        where ('observer' = ANY(AGA.role_names) or 'modifier' = ANY(AGA.role_names)) 
+        and AGA.graph_id is null 
+    ) 
+    select array_agg(ANG.graph_id) into l_refused_auths
+    from all_nonauth_graphs ANG ;
+    
+    if array_length(all_nonauth_graphs, 1) != 0 then 
+        raise exception 'graphs % do not exist', l_refused_auths using errcode = '42704';
+    end if;
 
     -- create graph
     call sgraphs.create_graph_from_imports(p_new_id, p_name, p_description, p_imported_graphs);
 
     -- grant graph access
-    call susers.add_auth_for_user_on_resource(p_user, 'observer','graph', p_new_id);
-    call susers.add_auth_for_user_on_resource(p_user, 'modifier','graph', p_new_id);
+    call susers.insert_new_resource(p_user, 'graph', p_new_id);
+    call susers.grant_access_to_user_for_resource(p_user, 'graph', 'observer', p_new_id);
+    call susers.grant_access_to_user_for_resource(p_user, 'graph', 'modifier', p_new_id);
 
 end; $$;
 
@@ -69,9 +78,8 @@ alter procedure susers.create_graph_from_imports owner to upa;
 create or replace procedure susers.clear_graph_metadata(p_actor text, p_graph_id text)
 language plpgsql as $$
 declare 
-
 begin 
-    call susers.accept_any_user_access_to_resource_or_raise(p_actor, 'graph', array['modifier'], p_graph_id);
+    call susers.accept_user_access_to_resource_or_raise(p_actor, 'graph', array['modifier'], true, p_graph_id);
     call sgraphs.clear_graph_metadata(p_graph_id);
 end; $$;
 
@@ -81,7 +89,7 @@ create or replace procedure susers.upsert_graph_metadata_entry(p_actor text, p_g
 language plpgsql as $$
 declare 
 begin 
-    call susers.accept_any_user_access_to_resource_or_raise(p_actor, 'graph', array['modifier'], p_graph_id);
+    call susers.accept_user_access_to_resource_or_raise(p_actor, 'graph', array['modifier'], true, p_graph_id);
     call sgraphs.upsert_graph_metadata_entry(p_graph_id, p_key, p_values);
 end; $$;
 
@@ -97,17 +105,13 @@ returns table (
 declare 
     l_roles text[];
 begin
-
-   select array_agg(role_name) into l_roles
-    from susers.roles;
-
     return query
     select 
     GRA.graph_id, GRO.role_names as graph_roles,
     GRA.graph_name, GRA.graph_description,
     ENT.entry_key as graph_md_key, ENT.entry_values as graph_md_values
     from sgraphs.graphs GRA
-    join susers.list_authorized_graphs_for_any_roles(p_user, l_roles) GRO ON GRO.graph_id = GRA.graph_id
+    join susers.all_graphs_authorized_for_user(p_user) GRO ON GRO.graph_id = GRA.graph_id
     left outer join sgraphs.graph_entries ENT on ENT.graph_id = GRA.graph_id;
 end; $$;
 
@@ -119,14 +123,13 @@ returns table (graph_name text, graph_description text, entry_key text, entry_va
 language plpgsql as $$
 declare 
 begin 
-	call susers.accept_any_user_access_to_resource_or_raise(p_user_login, 'graph',ARRAY['manager','observer','modifier'], p_id);
+	call susers.accept_user_access_to_resource_or_raise(p_user_login, 'graph',ARRAY['manager','observer','modifier'], false, p_id);
 	return query select * from sgraphs.load_graph_metadata(p_id);
 end; $$;
 
 alter function susers.load_graph_metadata owner to upa;
 
 
--- susers.transitive_visible_graphs_since gets all dependent graphs and roles from a graph 
 create or replace function susers.transitive_visible_graphs_since(p_user_login text, p_id text)
 returns table (graph_id text, graph_roles text[]) language plpgsql as $$
 declare
@@ -142,48 +145,45 @@ begin
         return query select null, null;
         return;
     end if;
-    -- graph may not exist
-    if not exists (
-        select 1 from sgraphs.graphs GRA where GRA.graph_id = p_id
-    ) then 
-        return query select null, null;
-        return;
-    end if;
 
-    -- user exists and is active, graph exists. 
-    -- test if bootstrap graph is authorized
-    select array_agg(distinct role_name) into l_auth
-    from susers.authorizations AUT
-    join susers.roles ROL on ROL.role_id = AUT.auth_role_id
-    join susers.classes CLA on CLA.class_id = AUT.auth_class_id
-    where AUT.auth_active = true
-    AND CLA.class_name = 'graph'
-    AND AUT.auth_user_id = l_user_id
-    and (AUT.auth_resource is null or AUT.auth_resource = p_id);
-    -- return id of the graph, null if first graph is not authorized
-    if not ('observer' =ANY(l_auth) or 'modifier' =ANY(l_auth)) then 
-        return query select p_id, null;
-        return;
-    end if;
 
-    -- principle is: 
-    -- inclusions table contains source (the parent graph) and its childs (the depenndant graphs). 
-    -- So, starting from a graph, we consider it as the child and move back, as much as possible, 
-    -- through its parents again and again until no more data is inserted
-
-    -- creates walkthrough table if it does not exist
-    create temporary table if not exists 
-    temp_table_graphs_imports(walkthrough_id text, height int, graph_id text, roles text[]);
+    -- create data structures to deal with walkthrough
     -- id for walkthrough    
     select gen_random_uuid()::text into l_walkthrough_id;
+    -- create direct neighbors table if it does not exist
+    create temporary table if not exists 
+    temp_table_graphs_neighbors(walkthrough_id text, graph_id text, roles text[], parent_id text);
+    -- insert values for neighbors 
+    with visible_graphs as (
+        select AGA.resource as graph_id, AGA.role_names
+        from susers.all_graphs_authorized_for_user('root') AGA
+        where 'modifier' =ANY(AGA.role_names) or 'observer' =ANY(AGA.role_names)
+    ), parents_graphs as (
+        select GRA.graph_id, GRA.role_names, 
+        INC.source_id as parent_id
+        from visible_graphs GRA
+        left outer join sgraphs.inclusions INC on INC.child_id = GRA.graph_id
+        join visible_graphs PAR on INC.source_id = PAR.graph_id
+    )
+    insert into temp_table_graphs_neighbors(walkthrough_id, graph_id, roles, parent_id)
+    select l_walkthrough_id, PGR.graph_id, PGR.role_names as roles, PGR.parent_id 
+    from parents_graphs PGR;
+
+    -- graph may not exist or may be invisible
+    if not exists (select 1 from temp_table_graphs_neighbors where graph_id = p_id) then 
+        delete from temp_table_graphs_neighbors where walkthrough_id = l_walkthrough_id;
+        return query select null, null where 1 != 1;
+        return;
+    end if;
+
     -- height of the values 
     l_height = 1;
     -- insert first value: the current graph 
     insert into temp_table_graphs_imports(walkthrough_id, height, graph_id, roles)
-    select l_walkthrough_id, l_height, p_id, l_auth;
+    select l_walkthrough_id, l_height, graph_id, roles 
+    from temp_table_graphs_neighbors where graph_id = pid;
 
     loop 
-
         with all_current_childs as (
             select TTG1.graph_id 
             from temp_table_graphs_imports TTG1
@@ -194,37 +194,14 @@ begin
                 'observer' = ANY(TTG1.roles)
             )
         ), all_parents as (
-            select INC.source_id as graph_id
-            from sgraphs.inclusions INC 
-            join all_current_childs ACC on ACC.graph_id = INC.child_id 
-        ), all_new_parents as (
-            select APA.graph_id 
+            select TTGN.parent_id as graph_id, TTGN.roles 
+            from temp_table_graphs_neighbors TTGN 
+            join all_current_childs ACC on ACC.graph_id = TTGN.graph_id 
+        ), all_new_parents_roles as (
+            select APA.graph_id, APA.roles
             from all_parents APA 
             left outer join all_current_childs ACC on ACC.graph_id = APA.graph_id 
             where ACC.graph_id is null 
-        ), all_new_parents_extended_roles as (
-            select ANP.graph_id, ROL.role_name 
-            from susers.authorizations AUT
-            join all_new_parents ANP on AUT.auth_resource = ANP.graph_id
-            join susers.roles ROL on ROL.role_id = AUT.auth_role_id
-            join susers.classes CLA on CLA.class_id = AUT.auth_class_id
-            where AUT.auth_active = true
-            and CLA.class_name = 'graph'
-            and AUT.auth_user_id = l_user_id
-            UNION ALL 
-            select ANP.graph_id, ROL.role_name 
-            from susers.authorizations AUT
-            join susers.roles ROL on ROL.role_id = AUT.auth_role_id
-            join susers.classes CLA on CLA.class_id = AUT.auth_class_id
-            cross join all_new_parents ANP
-            where AUT.auth_active = true
-            and CLA.class_name = 'graph'
-            and AUT.auth_user_id = l_user_id
-            and AUT.auth_resource is null 
-        ), all_new_parents_roles as (
-            select ANPER.graph_id, array_agg(distinct ANPER.role_name) as roles 
-            from all_new_parents_extended_roles ANPER
-            group by ANPER.graph_id
         ), all_auth_parents as (
             select distinct ANPR.graph_id, ANPR.roles
             from all_new_parents_roles ANPR
@@ -258,10 +235,10 @@ begin
 
     delete from temp_table_graphs_imports
     where walkthrough_id = l_walkthrough_id;
+    delete from temp_table_graphs_neighbors
+    where walkthrough_id = l_walkthrough_id;
     return;
 end; $$;
-
-alter function susers.transitive_visible_graphs_since owner to upa;
 
 
 -- susers.transitive_load_base_elements_in_graph loads all visible elements from a graph to all its dependencies
@@ -273,7 +250,7 @@ returns table (
 ) language plpgsql as $$
 declare
 begin 
-    call susers.accept_any_user_access_to_resource_or_raise(p_user_login, 'graph',ARRAY['observer','modifier'], p_id);
+    call susers.accept_user_access_to_resource_or_raise(p_user_login, 'graph',ARRAY['observer','modifier'], false, p_id);
     
     return query
     with all_source_graphs as (
@@ -335,7 +312,7 @@ returns table (
 ) language plpgsql as $$
 declare
 begin 
-    call susers.accept_any_user_access_to_resource_or_raise(p_user_login, 'graph',ARRAY['observer','modifier'], p_id);
+    call susers.accept_user_access_to_resource_or_raise(p_user_login, 'graph',ARRAY['observer','modifier'], false, p_id);
     return query
     with all_source_entities as (
         select TLB.graph_id, TLB.editable, 
@@ -379,7 +356,7 @@ returns table (
 ) language plpgsql as $$
 declare
 begin 
-    call susers.accept_any_user_access_to_resource_or_raise(p_user_login, 'graph',ARRAY['observer','modifier'], p_id);
+    call susers.accept_user_access_to_resource_or_raise(p_user_login, 'graph',ARRAY['observer','modifier'], false, p_id);
     return query
     with all_visible_graphs as (
         select TGS.graph_id
@@ -443,7 +420,7 @@ create or replace procedure susers.upsert_element_in_graph(
 declare 
     l_graph_id text;
 begin 
-    call susers.accept_any_user_access_to_resource_or_raise(p_user_login, 'graph', ARRAY['modifier'], p_graph_id);
+    call susers.accept_user_access_to_resource_or_raise(p_user_login, 'graph', ARRAY['modifier'], true, p_graph_id);
     
     select ELT.graph_id into l_graph_id
     from sgraphs.elements ELT 
@@ -472,7 +449,7 @@ begin
         raise exception 'no element matching id %', p_id;
     end if;
 
-    call susers.accept_any_user_access_to_resource_or_raise(p_user_login, 'graph', ARRAY['modifier'], l_graph_id); 
+    call susers.accept_user_access_to_resource_or_raise(p_user_login, 'graph', ARRAY['modifier'], true, l_graph_id); 
     call sgraphs.upsert_attributes(p_id, p_name, p_values, p_periods);
 
 end; $$;
@@ -498,7 +475,7 @@ begin
         raise exception 'no element matching id %', p_role_id;
     end if;
 
-    call susers.accept_any_user_access_to_resource_or_raise(p_user_login, 'graph', ARRAY['modifier'], l_graph_id); 
+    call susers.accept_user_access_to_resource_or_raise(p_user_login, 'graph', ARRAY['modifier'], true, l_graph_id); 
 
 
     with extended_relation_roles as (
@@ -540,63 +517,63 @@ declare
 	l_graph_id text;
 begin
 	
-select GRA.graph_id into l_graph_id 
-from sgraphs.elements ELT 
-join sgraphs.graphs GRA on ELT.graph_id = GRA.graph_id;
+    select GRA.graph_id into l_graph_id 
+    from sgraphs.elements ELT 
+    join sgraphs.graphs GRA on ELT.graph_id = GRA.graph_id;
 
-if l_graph_id is null then 
-    -- just returns empty
-	return query select null, null, null, null, null, null, null, null, null where 1 <> 1;
-    return;
-end if;
+    if l_graph_id is null then 
+        -- just returns empty
+        return query select null, null, null, null, null, null, null, null, null where 1 <> 1;
+        return;
+    end if;
 
-call susers.accept_any_user_access_to_resource_or_raise(p_user_login, 'graph', ARRAY['modifier','observer'], l_graph_id);
+    call susers.accept_user_access_to_resource_or_raise(p_user_login, 'graph', ARRAY['modifier','observer'], false, l_graph_id);
 
-return query
-with element_data as (
-	select ELT.element_id,
-	array_agg(TRA.trait) as traits,
- 	max(PER.period_value) as activity  
-	from sgraphs.elements ELT 
-	join sgraphs.periods PER on PER.period_id = ELT.element_period
-	join sgraphs.element_trait ETR on ETR.element_id = ELT.element_id
-	join sgraphs.traits TRA on TRA.trait_id = ETR.trait_id
-	where ELT.element_id = p_element_id
-	group by ELT.element_id
-), element_roles as (
-	select RRO.relation_id as element_id, 
-	RRO.role_in_relation as role_name , 
-	array_agg(RRV.relation_value order by RRV.relation_value) as role_values,
-   	array_agg(PER.period_value order by RRV.relation_value) as role_periods  
-	from sgraphs.relation_role RRO 
-	join sgraphs.relation_role_values RRV on RRO.relation_role_id = RRV.relation_role_id
-    join sgraphs.periods PER on PER.period_id = RRV.relation_period_id
-	where RRO.relation_id = p_element_id
-	group by RRO.relation_id, RRO.role_in_relation
-), element_entity as (
-	select ENA.entity_id as element_id,
-	ENA.attribute_name, 
-	array_agg(ENA.attribute_value order by ENA.attribute_id) as attribute_values,  
-	array_agg(PER.period_value order by ENA.attribute_id) as attribute_periods
-	from sgraphs.entity_attributes ENA 
-	join sgraphs.periods PER on PER.period_id = ENA.period_id
-	where PER.period_value <> '];['
-	and ENA.entity_id = p_element_id
-	group by ENA.entity_id, ENA.attribute_name
-)
-select 
-EDA.element_id,
-EDA.traits,	
-EDA.activity,
-ERO.role_name,
-ERO.role_values,
-ERO.role_periods,
-ELE.attribute_name, 
-ELE.attribute_values, 
-ELE.attribute_periods
-from element_data EDA 
-left outer join element_roles ERO on ERO.element_id = EDA.element_id 
-left outer join element_entity ELE on ELE.element_id = EDA.element_id;
+    return query
+    with element_data as (
+        select ELT.element_id,
+        array_agg(TRA.trait) as traits,
+        max(PER.period_value) as activity  
+        from sgraphs.elements ELT 
+        join sgraphs.periods PER on PER.period_id = ELT.element_period
+        join sgraphs.element_trait ETR on ETR.element_id = ELT.element_id
+        join sgraphs.traits TRA on TRA.trait_id = ETR.trait_id
+        where ELT.element_id = p_element_id
+        group by ELT.element_id
+    ), element_roles as (
+        select RRO.relation_id as element_id, 
+        RRO.role_in_relation as role_name , 
+        array_agg(RRV.relation_value order by RRV.relation_value) as role_values,
+        array_agg(PER.period_value order by RRV.relation_value) as role_periods  
+        from sgraphs.relation_role RRO 
+        join sgraphs.relation_role_values RRV on RRO.relation_role_id = RRV.relation_role_id
+        join sgraphs.periods PER on PER.period_id = RRV.relation_period_id
+        where RRO.relation_id = p_element_id
+        group by RRO.relation_id, RRO.role_in_relation
+    ), element_entity as (
+        select ENA.entity_id as element_id,
+        ENA.attribute_name, 
+        array_agg(ENA.attribute_value order by ENA.attribute_id) as attribute_values,  
+        array_agg(PER.period_value order by ENA.attribute_id) as attribute_periods
+        from sgraphs.entity_attributes ENA 
+        join sgraphs.periods PER on PER.period_id = ENA.period_id
+        where PER.period_value <> '];['
+        and ENA.entity_id = p_element_id
+        group by ENA.entity_id, ENA.attribute_name
+    )
+    select 
+    EDA.element_id,
+    EDA.traits,	
+    EDA.activity,
+    ERO.role_name,
+    ERO.role_values,
+    ERO.role_periods,
+    ELE.attribute_name, 
+    ELE.attribute_values, 
+    ELE.attribute_periods
+    from element_data EDA 
+    left outer join element_roles ERO on ERO.element_id = EDA.element_id 
+    left outer join element_entity ELE on ELE.element_id = EDA.element_id;
 end;$$;
 
 alter function susers.load_element_by_id owner to upa;
@@ -617,7 +594,7 @@ begin
 	end if;
 
 	-- user may not modify graph 
-	call susers.accept_any_user_access_to_resource_or_raise(p_user_login, 'graph', ARRAY['modifier'], l_graph_id);
+	call susers.accept_user_access_to_resource_or_raise(p_user_login, 'graph', ARRAY['modifier'], true, l_graph_id);
 
 	if exists (
 		select 1
@@ -652,7 +629,7 @@ begin
 	end if;
 
 	-- user may not modify graph 
-	call susers.accept_any_user_access_to_resource_or_raise(p_user_login, 'graph', ARRAY['manager'], l_graph_id);
+	call susers.accept_user_access_to_resource_or_raise(p_user_login, 'graph', ARRAY['manager'], true, l_graph_id);
 
 	with all_sources as (
 		select ELT.element_id 
@@ -677,6 +654,7 @@ begin
 	-- ok to delete 
 	delete from sgraphs.elements where graph_id = p_graph_id;
     delete from sgraphs.graphs where graph_id = p_graph_id;
+    call susers.delete_resource('graph', p_graph_id);
 end; $$;
 
 alter procedure susers.delete_graph owner to upa;
@@ -686,33 +664,94 @@ create or replace procedure susers.clear_graphs(p_user_login text)
 language plpgsql as $$
 declare
 	l_auth bool;
+    l_class_id int;
 begin
-	
-with aggregated_roles_over_graphs as (
-	select array_agg(ROL.role_name) as active_roles
-	from susers.roles ROL
-	join susers.authorizations AUT on AUT.auth_role_id = ROL.role_id
-	join susers.classes CLA on CLA.class_id = AUT.auth_class_id
-	join susers.users USR on USR.user_id = AUT.auth_user_id
-	where AUT.auth_active
-	and USR.user_active
-	and CLA.class_name = 'graph'
-	and AUT.auth_resource is null
-	and USR.user_login = p_user_login
-)
-select ARRAY['modifier','manager']  <@ AROG.active_roles into l_auth
-from aggregated_roles_over_graphs AROG;
+        
+    with aggregated_roles_over_graphs as (
+        select array_agg(ROL.role_name) as active_roles
+        from susers.roles ROL
+        join susers.authorizations AUT on AUT.auth_role_id = ROL.role_id
+        join susers.classes CLA on CLA.class_id = AUT.auth_class_id
+        join susers.users USR on USR.user_id = AUT.auth_user_id
+        where AUT.auth_active
+        and USR.user_active
+        and CLA.class_name = 'graph'
+        and AUT.auth_resource is null
+        and USR.user_login = p_user_login
+    )
+    select ARRAY['modifier','manager']  <@ AROG.active_roles into l_auth
+    from aggregated_roles_over_graphs AROG;
 
-if l_auth is null or not l_auth then 
-	raise exception 'auth failure: cannot clear graphs';
-end if;
+    if l_auth is null or not l_auth then 
+        raise exception 'auth failure: cannot clear graphs' using errcode = '';
+    end if;
 
-delete from sgraphs.element_trait;
-delete from sgraphs.elements;
-delete from sgraphs.graphs;
-delete from sgraphs.traits;
-delete from sgraphs.periods;
+    select class_id into l_class_id from susers.classes where class_name = 'graph';
 
-end; $$;
+    delete from sgraphs.element_trait;
+    delete from sgraphs.elements;
+    delete from sgraphs.graphs;
+    delete from sgraphs.traits;
+    delete from sgraphs.periods;
+    delete from susers.authorizations where auth_resource is not null and auth_class_id = l_class_id;
+    delete from susers.resources where resource_type = l_class_id;
+
+    end; $$;
 
 alter procedure susers.clear_graphs owner to upa;
+
+
+
+-- susers.list_authorized_graphs_for_any_roles finds graphs an user may access for given roles
+create or replace function susers.list_authorized_graphs_for_any_roles(p_user_login text, p_roles text[]) 
+returns table(graph_id text, role_names text[]) language plpgsql as $$
+declare 
+	l_user_id text;
+	l_class_id int;
+	l_matching_roles int[];
+	l_role text;
+begin 
+	select USR.user_id into l_user_id
+	from susers.users USR
+	where USR.user_login = p_user_login
+	and USR.user_active = true;
+
+	select array_agg(ROL.role_id) into l_matching_roles
+	from susers.roles ROL 
+	where ROL.role_name = ANY(p_roles);
+
+	select CLA.class_id into l_class_id 
+	from susers.classes CLA 
+	where CLA.class_name = 'graph';
+	
+	if l_class_id is null then 
+		raise exception 'invalid class provided' using errcode = '42704';
+	end if;
+
+	return query 
+	with roles_resources as (
+		select AUT.auth_resource as graph_id, ROL.role_name
+		from susers.authorizations AUT
+		join susers.roles ROL on AUT.auth_role_id = ROL.role_id
+		where l_user_id is not null 
+		and AUT.auth_user_id = l_user_id
+		and AUT.auth_active = true
+		and AUT.auth_role_id = ANY(l_matching_roles)
+		and AUT.auth_class_id = l_class_id
+		and AUT.auth_resource is null
+	), roles_graphs as (
+		select GRA.graph_id, ROR.role_name
+		from sgraphs.graphs GRA 
+		join roles_resources ROR on ROR.graph_id = GRA.graph_id
+		UNION 
+		select GRA.graph_id, ROR.role_name
+		from roles_resources ROR
+		cross join sgraphs.graphs GRA
+		where ROR.graph_id is null 
+	) 
+	select distinct ROG.graph_id, array_agg(ROG.role_name) as role_names
+	from roles_graphs ROG
+	group by ROG.graph_id;
+end;$$;
+
+alter function susers.list_authorized_graphs_for_any_roles owner to upa;
