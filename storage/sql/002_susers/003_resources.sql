@@ -48,48 +48,149 @@ begin
 	delete from susers.resources where resource_id = p_resource_id and resource_type = l_class_id;
 end; $$;
 
--- susers.all_graphs_authorized_for_user 
-create or replace function susers.all_graphs_authorized_for_user(p_login text)
-returns table (resource text, role_names text[]) language plpgsql as $$
-declare
-begin 
+
+-- susers.authorizations_for_user returns authorized and unauthorized resources. 
+-- It hides database details, and then should be used as the only data source. 
+-- It returns the class, the resource (null for all auth), included or excluded, and aggregated roles
+create or replace function susers.authorizations_for_user(p_user_login text)
+returns table(class_name text, resource text, included bool, roles text[])
+language plpgsql as $$
+begin
 	return query 
-	with all_graphs_current_auths as (
-		select AUA.role_name, AUA.auth_all_resources, 
-		AUA.auth_inclusion, AUA.resource
-		from susers.all_users_authorizations AUA
-		where AUA.class_name = 'graph'
-		and AUA.user_login = p_login
-		and AUA.user_active = true
-	), all_resources_unauth as (
-		select AGC.resource, AGC.role_name
-		from all_graphs_current_auths AGC 
-		where AGC.auth_inclusion = false
-		and AGC.resource is not null
-	), all_resources_auth as (
-		select GRA.graph_id as resource, AGC.role_name
-		from all_graphs_current_auths AGC
-		cross join sgraphs.graphs GRA
-		where AGC.resource is null
-		and auth_all_resources = true
-	), specific_resources_auth as (
-		select AGC.resource, AGC.role_name
-		from all_graphs_current_auths AGC
-		where AGC.auth_inclusion = true
-		and AGC.resource is not null
-	), all_auths as (
-		select distinct SRA.resource, SRA.role_name 
-		from specific_resources_auth SRA
-		union 
-		select distinct ARA.resource, ARA.role_name 
-		from all_resources_auth ARA
+	with raw_auths as (
+		-- raw authorizations, the full content
+		select 
+		CLA.class_name,
+		ROL.role_name,
+		AUT.auth_all_resources, 
+		AUT.auth_inclusion, 
+		RAU.resource
+		from susers.authorizations AUT 
+		join susers.users USR on USR.user_id = AUT.auth_user_id
+		join susers.roles ROL on AUT.auth_role_id = ROL.role_id
+		join susers.classes CLA on CLA.class_id = AUT.auth_class_id
+		left outer join susers.resources_authorizations RAU on RAU.auth_id = AUT.auth_id
+		where USR.user_active = true 
+		and USR.user_login = p_user_login 
+	), all_forbidden_resources as (
+		-- get all unauthorized resources. Set is finite by construction 
+		select RAA.class_name, RAA.role_name, RAA.resource, RAA.auth_inclusion  
+		from raw_auths RAA
+		where RAA.auth_all_resources = false
+		and RAA.auth_inclusion = false 
+		and RAA.resource is not null
+	), specific_authorized_resources as (
+		-- only the explicit set of authorized values with no better access (resource nul)
+		select RAA.class_name, RAA.role_name, RAA.resource, RAA.auth_inclusion
+		from raw_auths RAA
+		where RAA.auth_all_resources = false
+		and RAA.auth_inclusion = true
+		and RAA.resource is not null
+		and not exists (
+			select 1 
+			from raw_auths RAUT
+			where 
+			RAUT.auth_all_resources = true 
+			and RAA.class_name = RAUT.class_name
+			and RAA.role_name = RAUT.role_name
+			and RAA.resource is null
+			and RAUT.auth_inclusion = true
+		)
+	), specific_remaining_authorized_resources as (
+		-- authorized - unauthorized
+		select SAR.class_name, SAR.role_name, SAR.resource, SAR.auth_inclusion
+		from specific_authorized_resources SAR
+		left outer join all_forbidden_resources AFR on SAR.class_name = AFR.class_name
+			and SAR.role_name = AFR.role_name and SAR.resource = AFR.resource
+		where AFR.class_name is null and AFR.role_name is null
+		and SAR.resource is not null 
+	), remaining_unauthorized_resources as (
+		select AFR.class_name, AFR.role_name, AFR.resource, AFR.auth_inclusion
+		from all_forbidden_resources AFR
+		left outer join specific_remaining_authorized_resources SRAS 
+			on AFR.class_name = SRAS.class_name
+			and AFR.role_name = SRAS.role_name
+			and AFR.resource = SRAS.resource
+		where SRAS.resource is null 
+		and SRAS.class_name is null 
+		and AFR.role_name is null
+	), final_unaggregated_auths as (
+		-- all global included auth
+		select RAA.class_name, RAA.role_name, RAA.resource,  RAA.auth_inclusion
+		from raw_auths RAA
+		where RAA.auth_all_resources = true
+		and RAA.auth_inclusion = true
+		and RAA.resource is null
+		UNION 
+		-- all specfic auth for included
+		select SRAR.class_name, SRAR.role_name, SRAR.resource,  SRAR.auth_inclusion
+		from specific_remaining_authorized_resources  SRAR
+		UNION 
+		-- all specific unauthorized remaining values 
+		select RUR.class_name, RUR.role_name, RUR.resource, RUR.auth_inclusion
+		from remaining_unauthorized_resources RUR 
 	)
-	select ALA.resource, array_agg(distinct ALA.role_name order by ALA.role_name) 
-	from all_auths ALA
-	left outer join all_resources_unauth ARU on ARU.resource = ALA.resource and ALA.role_name = ARU.role_name
-	where ARU.resource is null and ARU.role_name is null
-	group by ALA.resource ;
-end; $$;
+	select 
+	FUD.class_name, 
+	FUD.resource,
+	FUD.auth_inclusion as included, 
+	array_agg(role_name)
+	from final_unaggregated_auths FUD
+	group by 
+	FUD.class_name, 
+	FUD.resource,
+	FUD.auth_inclusion ;
+end;$$;
+
+alter function susers.authorizations_for_user owner to upa;
+
+-- susers.authorizations_for_user_on_resource returns all roles and if they are granted for a given resource and a given login. 
+-- Note that resource may be null.
+-- This function does NOT raise error for invalid parameter.  
+create or replace function susers.authorizations_for_user_on_resource (p_user_login text, p_class_name text, p_resource text)
+returns table(role_name text, role_included bool) language plpgsql as $$
+begin 
+	if p_resource is not null and not exists (
+		select 1 
+		from susers.resources RES 
+		join susers.classes CLA on CLA.class_id = RES.resource_type  
+		where RES.resource_id = p_resource
+		and CLA.class_name = p_class_name
+	) then 
+		return query select null, false where 1 != 1;
+	end if;
+
+	return query
+	with all_auths_for_resource as (
+		select AFU.resource, included, unnest(roles) as role_name
+		from susers.authorizations_for_user(p_user_login) AFU
+		where AFU.class_name = p_class_name 
+		and (p_resource is null and AFU.resource is null) 
+		or (p_resource is not null and AFU.resource = p_resource)
+	), refused_resource_roles as (
+		select AAFR.included, AAFR.role_name
+		from all_auths_for_resource AAFR 
+		where AAFR.included = false 
+	), accepted_resource_roles as (
+		select AAFR.included, AAFR.role_name
+		from all_auths_for_resource AAFR 
+		where AAFR.included = true 
+	), remaining_resource_roles as (
+		select distinct ARR.role_name  
+		from accepted_resource_roles ARR 
+		left outer join refused_resource_roles RRR on RRR.role_name = ARR.role_name 
+		where RRR.role_name is null
+		and ARR.role_name is not null  
+	) 
+	select RRR.role_name, true as role_included 
+	from remaining_resource_roles RRR
+	UNION 
+	select RERO.role_name, false as role_included
+	from refused_resource_roles RERO;
+end;$$;
+
+alter function susers.authorizations_for_user_on_resource owner to upa;
+
 
 -- susers.change_access_to_user_for_resource is general core procedure 
 -- to grant or revoke authorizations to user. 
@@ -250,130 +351,67 @@ alter procedure susers.revoke_access_to_user_for_resource owner to upa;
 create or replace procedure susers.accept_user_access_to_resource_or_raise(p_user_login text, p_class text, p_role_names text[], p_all_roles bool, p_resource text) 
 language plpgsql as $$
 declare
-	l_resource text;
-	l_found bool;
-	l_user_id text;
-	l_role text;
-	l_role_id int;
-	l_class_id int;
-    l_all_matches bool;
-    l_one_match bool;
-    l_current_match bool;
+	l_remaining_roles text[];
 begin 
-	select user_id into l_user_id
-	from susers.users 
-	where user_active = true 
-	and user_login = p_user_login;
 
-	if l_user_id is null then 
-		raise exception 'auth failure: no active user %', p_user_login using errcode = '42501';
-	end if;
-	-- user exists and is active
+	with expected_roles as (
+		select unnest(p_role_names) as role_name
+	), granted_roles as (
+		select AFU.role_name
+		from susers.authorizations_for_user_on_resource(p_user_login, p_class, p_resource) AFU
+		join expected_roles ERO on ERO.role_name = AFU.role_name 
+		where role_included = true
+	) 
+	select array_agg(GRO.role_name) into l_remaining_roles
+	from granted_roles GRO;
 
-	select class_id into l_class_id 
-	from susers.classes 
-	where class_name = p_class;
-
-	if l_class_id is null then 
-		raise exception '% is not a valid class', p_class using errcode = '42704';
-	end if;
-	-- class exists
-
-	if p_resource is not null then 
-        if not exists (select 1 from susers.resources where resource_id = p_resource and resource_type = l_class_id) then 
-			raise exception 'resource not found: non existing resource %', p_resource using errcode = 'P0002';
+	if p_all_roles then 
+		if not (p_role_names <@ l_remaining_roles) then
+			raise exception 'no auth or no resource' using errcode = '42501';
 		end if;
-	
-    	select p_resource into l_resource;
-	else
-		select null into l_resource;
+	elsif array_length(l_remaining_roles, 1) = 0  then 
+		raise exception 'no auth or no resource' using errcode = '42501';
 	end if;
-	-- resource is valid for that class
-
-    -- no role, no action, it is accepted
-	if array_length(p_role_names, 1) > 0 then 
-        return;
-    end if;
-
-    -- process each role
-    select true into l_all_matches;
-    select false into l_one_match;
-    -- for each role in parameters
-	foreach l_role in array p_role_names loop 
-
-		select role_id into l_role_id
-		from susers.roles 
-		where role_name = l_role;
-
-		if l_role_id is null then  
-			raise exception '% is not a valid role',  p_auth using errcode = '42704';
-		end if;
-		-- role exists
-
-        with user_access as (
-            select AUT.auth_all_resources, RAU.resource, RAU.auth_inclusion
-            from susers.authorizations AUT 
-            left outer join susers.resources_authorizations RAU on RAU.auth_id = AUT.auth_id
-            where AUT.auth_role_id = l_role_id
-            and AUT.auth_class_id = l_class_id
-            and AUT.auth_user_id = l_user_id
-        ), specific_access_accept as (
-            select 1 as validation
-            from user_access UAC
-            where UAC.auth_all_resources = false 
-            and UAC.resource = p_resource
-            and UAC.auth_inclusion = true
-        ), all_access_reject as (
-            select -100 as validation
-            from user_access UAC
-            where UAC.auth_all_resources = true 
-            and UAC.resource = p_resource
-            and UAC.auth_inclusion = false
-        ), all_access_accept as (
-            select 1 as validation
-            from user_access UAC
-            where UAC.auth_all_resources = true 
-            and UAC.resource is null 
-            and UAC.auth_inclusion is null
-        ), decision_table as (
-            select validation
-            from specific_access_accept
-            UNION ALL 
-            select validation
-            from all_access_reject
-            UNION ALL 
-            select validation
-            from all_access_accept
-            UNION ALL
-            select 0 as validation
-        )
-        select (sum(validation) > 0) into l_current_match 
-        from decision_table;
-
-        if not l_current_match then 
-            select false into l_all_matches;
-        else
-            select true into l_one_match;
-        end if;
-	end loop;
-
-    -- THEN, decide. 
-    -- all matches, no matter the rest, it is accepted
-    if l_all_matches then 
-        return;
-    end if;
-    -- no match means refused anyway 
-    if not l_one_match then 
-        raise exception 'auth failure: unauthorized' using errcode = '42501';
-    end if;
-    -- expecting one match and got it
-    if not p_all_roles then 
-        return;
-    end if;
-    -- expecting all matches and did not have it
-    if not l_all_matches and p_all_roles then 
-		raise exception 'auth failure: unauthorized' using errcode = '42501';
-    end if;
 end; $$;
 
 alter procedure susers.accept_user_access_to_resource_or_raise owner to upa;
+
+-- susers.all_graphs_authorized_for_user returns all graphs with all roles an user may use
+create or replace function susers.all_graphs_authorized_for_user(p_user_login text) 
+returns table(resource text, role_names text[]) language plpgsql as $$
+declare 
+    l_class_id int;
+begin
+    select class_id into l_class_id from susers.classes CLA where CLA.class_name = 'graph';
+
+    return query
+    with all_auths as (
+        select AFU.resource, AFU.included, unnest(AFU.roles) as role_name
+        from susers.authorizations_for_user(p_user_login) AFU
+        where class_name = 'graph'
+    ), all_graphs_auths as (
+        select ALA.resource, ALA.included, ALA.role_name
+        from all_auths ALA 
+        join susers.resources RES on RES.resource_id = ALA.resource
+        where ALA.resource is not null 
+        and RES.resource_type = l_class_id
+        UNION 
+        select RES.resource_id as resource, ALA.included, ALA.role_name
+        from all_auths ALA 
+        cross join susers.resources RES 
+        where ALA.resource is null 
+        and ALA.included = true 
+        and RES.resource_type = l_class_id
+    ), reduced_auths as (
+        select AGA.resource, AGA.role_name, array_agg(distinct AGA.included) as role_inclusions 
+        from all_graphs_auths AGA 
+        group by AGA.resource, AGA.role_name
+    )
+    select RAU.resource as resource, array_agg(RAU.role_name) as role_names 
+    from reduced_auths RAU
+    where true = ALL(RAU.role_inclusions)
+	and array_length(RAU.role_inclusions, 1) > 0
+	group by  RAU.resource;
+end;$$;
+
+alter function susers.all_graphs_authorized_for_user owner to upa;

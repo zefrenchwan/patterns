@@ -596,7 +596,7 @@ begin
 	if exists (
 		select 1
 		from sgraphs.relation_role_values RRV
-		where RRV.relation_value = p_element_id;
+		where RRV.relation_value = p_element_id
 	) then 
 		raise exception 'a relation depends on current element to delete' using errcode = '23503';
 	end if;
