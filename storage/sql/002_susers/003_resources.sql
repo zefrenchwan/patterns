@@ -147,7 +147,7 @@ alter function susers.authorizations_for_user owner to upa;
 -- susers.authorizations_for_user_on_resource returns all roles and if they are granted for a given resource and a given login. 
 -- Note that resource may be null.
 -- This function does NOT raise error for invalid parameter.  
-create or replace function susers.authorizations_for_user_on_resource (p_user_login text, p_class_name text, p_resource text)
+create or replace function susers.authorizations_for_user_on_resource(p_user_login text, p_class_name text, p_resource text)
 returns table(role_name text, role_included bool) language plpgsql as $$
 begin 
 	if p_resource is not null and not exists (
@@ -376,36 +376,43 @@ end; $$;
 
 alter procedure susers.accept_user_access_to_resource_or_raise owner to upa;
 
--- susers.all_graphs_authorized_for_user returns all graphs with all roles an user may use
-create or replace function susers.all_graphs_authorized_for_user(p_user_login text) 
+-- susers.all_resources_authorized_for_user returns all resources with all roles an user may use. 
+-- Algorithm is to 
+-- get all explicit auth resources (included and excluded)
+-- get all authorized resources with null set (to say all but...) 
+-- and perform the difference. 
+create or replace function susers.all_resources_authorized_for_user(p_user_login text, p_class_name text) 
 returns table(resource text, role_names text[]) language plpgsql as $$
 declare 
     l_class_id int;
 begin
-    select class_id into l_class_id from susers.classes CLA where CLA.class_name = 'graph';
+    select class_id into l_class_id from susers.classes CLA where CLA.class_name = p_class_name;
 
     return query
     with all_auths as (
         select AFU.resource, AFU.included, unnest(AFU.roles) as role_name
         from susers.authorizations_for_user(p_user_login) AFU
-        where class_name = 'graph'
-    ), all_graphs_auths as (
+        where class_name = p_class_name
+    ), all_resources as (
+		select RES.resource_id 
+		from susers.resources RES
+		where RES.resource_type = l_class_id
+	), all_resource_auths as (
         select ALA.resource, ALA.included, ALA.role_name
         from all_auths ALA 
-        join susers.resources RES on RES.resource_id = ALA.resource
+        join all_resources RES on RES.resource_id = ALA.resource
         where ALA.resource is not null 
-        and RES.resource_type = l_class_id
         UNION 
         select RES.resource_id as resource, ALA.included, ALA.role_name
         from all_auths ALA 
-        cross join susers.resources RES 
+        cross join all_resources RES 
         where ALA.resource is null 
         and ALA.included = true 
-        and RES.resource_type = l_class_id
     ), reduced_auths as (
-        select AGA.resource, AGA.role_name, array_agg(distinct AGA.included) as role_inclusions 
-        from all_graphs_auths AGA 
-        group by AGA.resource, AGA.role_name
+        select ARA.resource, ARA.role_name, 
+		array_agg(distinct ARA.included) as role_inclusions 
+        from all_resource_auths ARA 
+        group by ARA.resource, ARA.role_name
     )
     select RAU.resource as resource, array_agg(RAU.role_name) as role_names 
     from reduced_auths RAU
@@ -414,4 +421,20 @@ begin
 	group by  RAU.resource;
 end;$$;
 
+alter function susers.all_resources_authorized_for_user owner to upa;
+
+create or replace function susers.all_graphs_authorized_for_user(p_user_login text) 
+returns table(resource text, role_names text[]) language plpgsql as $$
+begin 
+	return query select * from susers.all_resources_authorized_for_user(p_user_login, 'graph');
+end;$$;
+
 alter function susers.all_graphs_authorized_for_user owner to upa;
+
+create or replace function susers.all_users_authorized_for_user(p_user_login text) 
+returns table(resource text, role_names text[]) language plpgsql as $$
+begin 
+	return query select * from susers.all_resources_authorized_for_user(p_user_login, 'user');
+end;$$;
+
+alter function susers.all_users_authorized_for_user owner to upa;
