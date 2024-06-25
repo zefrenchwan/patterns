@@ -21,7 +21,11 @@ func TestEntitySerde(t *testing.T) {
 	entity.AddValue("first name", "Me", rightPeriod)
 
 	var reverseEntity *nodes.Entity
-	dto := storage.SerializeElement(&entity)
+	dto, errDTO := storage.SerializeElement(&entity)
+	if errDTO != nil {
+		t.Error(errDTO.Error())
+	}
+
 	reverse, errReverse := storage.DeserializeElement(dto)
 	if errReverse != nil {
 		t.Errorf("failing deserialization %s", errReverse.Error())
@@ -126,7 +130,11 @@ func TestMultipleValuesPerAttributeSerde(t *testing.T) {
 	}
 
 	// and then do it back
-	dto_back := storage.SerializeElement(element)
+	dto_back, errBack := storage.SerializeElement(element)
+	if errBack != nil {
+		t.Error(errBack.Error())
+	}
+
 	if dto.Id != dto_back.Id {
 		t.Fail()
 	} else if slices.Compare(dto.Traits, dto_back.Traits) != 0 {
@@ -173,7 +181,11 @@ func TestRelationSerde(t *testing.T) {
 	relation.AddPeriodValueForRole(nodes.RELATION_ROLE_OBJECT, "Y", rightPeriod)
 	relation.SetActivePeriod(leftPeriod)
 
-	dto := storage.SerializeElement(&relation)
+	dto, errDTO := storage.SerializeElement(&relation)
+	if errDTO != nil {
+		t.Error(errDTO.Error())
+	}
+
 	reverse, ErrReverse := storage.DeserializeElement(dto)
 	if ErrReverse != nil {
 		t.Errorf("error while deserialize: %s", ErrReverse.Error())
@@ -218,6 +230,43 @@ func TestRelationSerde(t *testing.T) {
 	} else if len(objectPeriods) != 1 {
 		t.Fail()
 	} else if objectPeriod := objectPeriods["Y"]; !objectPeriod.IsSameAs(rightPeriod) {
+		t.Fail()
+	}
+}
+
+func TestSnapshotEntitySerde(t *testing.T) {
+	now := time.Now().UTC().Truncate(1 * time.Second)
+	leftInterval := nodes.NewLeftInfiniteTimeInterval(now, false)
+	rightInterval := nodes.NewRightInfiniteTimeInterval(now, true)
+	leftPeriod := nodes.NewPeriod(leftInterval)
+	rightPeriod := nodes.NewPeriod(rightInterval)
+
+	entity := nodes.NewEntity([]string{"Person"})
+	entity.AddValue("last name", "MEEE", leftPeriod)
+	entity.AddValue("first name", "Me", rightPeriod)
+
+	dto, errDTO := storage.SerializeElementAtMoment(&entity, now)
+	if errDTO != nil {
+		t.Error(errDTO.Error())
+	}
+
+	if dto.Id != entity.Id() {
+		t.Fail()
+	} else if slices.Compare(entity.Traits(), dto.Traits) != 0 {
+		t.Fail()
+	} else if len(dto.Activity) != 0 {
+		t.Error("no period, it is a snapshot")
+	} else if len(dto.Roles) != 0 {
+		t.Fail()
+	} else if len(dto.Attributes) != 1 {
+		t.Fail()
+	}
+
+	// last name should not be there because now is not in left period
+	attr := dto.Attributes[0]
+	if attr.AttributeName != "first name" {
+		t.Fail()
+	} else if attr.AttributeValue != "Me" {
 		t.Fail()
 	}
 }

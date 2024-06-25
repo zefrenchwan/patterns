@@ -122,6 +122,26 @@ func (t TypedComparator[T]) NewFiniteInterval(left, right T, leftIn, rightIn boo
 	return result, nil
 }
 
+// ContainsInterval returns true if value is in the interval
+func (t TypedComparator[T]) ContainsInterval(a Interval[T], value T) bool {
+	leftCompare := t.Compare(value, a.min)
+	rightCompare := t.Compare(value, a.max)
+	switch {
+	case a.IsEmpty():
+		return false
+	case a.IsFull():
+		return true
+	case a.maxInfinite:
+		return leftCompare > 0 || (leftCompare == 0 && a.minIncluded)
+	case a.minInfinite:
+		return rightCompare < 0 || (rightCompare == 0 && a.maxIncluded)
+	default:
+		leftIn := leftCompare > 0 || (leftCompare == 0 && a.minIncluded)
+		rightIn := rightCompare < 0 || (rightCompare == 0 && a.maxIncluded)
+		return leftIn && rightIn
+	}
+}
+
 // CompareInterval is an order based on the lexicographic order.
 // Same sets are equals (return 0).
 func (t TypedComparator[T]) CompareInterval(a, b Interval[T]) int {

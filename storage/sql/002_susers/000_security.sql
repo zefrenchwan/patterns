@@ -86,30 +86,6 @@ create table susers.resources_authorizations (
 
 alter table susers.resources_authorizations owner to upa;
 
--- susers.all_users_authorizations agregates data from all auth tables
--- to make an usable data. 
-create or replace view susers.all_users_authorizations 
-(user_id , user_login , user_active ,
-class_name , role_name , 
-auth_all_resources , auth_inclusion , resource 
-) as 
-select 
-USR.user_id, 
-USR.user_login,
-USR.user_active,
-CLA.class_name,
-ROL.role_name,
-AUT.auth_all_resources, 
-AUT.auth_inclusion, 
-RAU.resource
-from susers.authorizations AUT 
-join susers.users USR on USR.user_id = AUT.auth_user_id
-join susers.roles ROL on AUT.auth_role_id = ROL.role_id
-join susers.classes CLA on CLA.class_id = AUT.auth_class_id
-left outer join susers.resources_authorizations RAU on RAU.auth_id = AUT.auth_id;
-
-alter view susers.all_users_authorizations owner to upa;
-
 
 
 grant all privileges on all tables in schema susers to upa;

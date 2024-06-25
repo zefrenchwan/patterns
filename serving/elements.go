@@ -30,9 +30,12 @@ func loadElementByIdHandler(wrapper ServiceParameters, w http.ResponseWriter, r 
 		w.WriteHeader(404)
 		return nil
 	} else {
-		response := storage.SerializeElement(element)
-		json.NewEncoder(w).Encode(response)
-		return nil
+		if response, err := storage.SerializeElement(element); err != nil {
+			return NewServiceInternalServerError(err.Error())
+		} else {
+			json.NewEncoder(w).Encode(response)
+			return nil
+		}
 	}
 }
 

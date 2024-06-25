@@ -2,12 +2,29 @@ package serving
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/zefrenchwan/patterns.git/storage"
 	"go.uber.org/zap"
 )
+
+const (
+	// Expected date format
+	URL_DATE_FORMAT = "2006-01-02T15:04:05"
+)
+
+// DeserializeTimeFromURL returns either a parsed time, or an error
+func DeserializeTimeFromURL(value string) (time.Time, error) {
+	var result time.Time
+	if len(URL_DATE_FORMAT) != len(value) {
+		return result, fmt.Errorf("invalid input, expecting %s", URL_DATE_FORMAT)
+	}
+
+	return time.Parse(URL_DATE_FORMAT, value)
+}
 
 // RequestContextKey is key type for context keys when using specific info (such as current user)
 type RequestContextKey string
@@ -32,6 +49,7 @@ func InitService(dao storage.Dao, initialContext context.Context, logger *zap.Su
 	AddAuthenticatedGetServiceHandlerToMux(mux, "/graph/delete/{graphId}/", deleteGraphHandler, parameters)
 	AddAuthenticatedGetServiceHandlerToMux(mux, "/graph/list/", listGraphHandler, parameters)
 	AddAuthenticatedGetServiceHandlerToMux(mux, "/graph/load/{graphId}/", loadGraphHandler, parameters)
+	AddAuthenticatedGetServiceHandlerToMux(mux, "/graph/snapshot/{graphId}/at/{moment}/", snapshotGraphHandler, parameters)
 	AddAuthenticatedGetServiceHandlerToMux(mux, "/graph/all/clear/", clearGraphsHandler, parameters)
 	// ELEMENTS OPERATIONS
 	AddAuthenticatedGetServiceHandlerToMux(mux, "/elements/load/{elementId}/", loadElementByIdHandler, parameters)

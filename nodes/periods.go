@@ -296,6 +296,23 @@ func (p *Period) ContainingTimeInterval() Interval[time.Time] {
 	return periodComparator.ContainingIntervalFor(p.elements)
 }
 
+// Contains tests if a period contains an element
+func (p *Period) Contains(moment time.Time) bool {
+	if p == nil || p.IsEmptyPeriod() {
+		return false
+	} else if p.IsFullPeriod() {
+		return true
+	}
+
+	for _, element := range p.elements {
+		if periodComparator.ContainsInterval(element, moment) {
+			return true
+		}
+	}
+
+	return false
+}
+
 // SerializePeriod returns the intervals as a string slice
 func SerializePeriod(p Period, dateFormat string) []string {
 	if p.IsEmptyPeriod() {

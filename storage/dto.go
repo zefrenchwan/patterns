@@ -2,6 +2,7 @@ package storage
 
 import (
 	"errors"
+	"time"
 
 	"github.com/zefrenchwan/patterns.git/graphs"
 	"github.com/zefrenchwan/patterns.git/nodes"
@@ -70,6 +71,14 @@ type ElementDTO struct {
 	Roles      map[string][]RelationRoleValueDTO `json:"roles,omitempty"`
 }
 
+// ElementDTOSerializer defines general contract for element to element to dto serialiazer
+type ElementDTOSerializer func(e nodes.Element) (ElementDTO, error)
+
+// IsEmpty returns true if element dto is non significant
+func (e ElementDTO) IsEmpty() bool {
+	return len(e.Id) == 0 || (len(e.Attributes) == 0 && len(e.Roles) == 0)
+}
+
 // EntityValueDTO is a DTO for entity values
 type EntityValueDTO struct {
 	AttributeName  string   `json:"attribute"`
@@ -83,11 +92,6 @@ type RelationRoleValueDTO struct {
 	Periods []string `json:"validity,omitempty"`
 }
 
-// IsEntityDTO returns true for an entity
-func (e ElementDTO) IsEntityDTO() bool {
-	return len(e.Roles) == 0
-}
-
 // SerializePeriodsForDTO returns the serialized period as a slice, one value per interval
 func SerializePeriodsForDTO(p nodes.Period) []string {
 	return nodes.SerializePeriod(p, DATE_SERDE_FORMAT)
@@ -99,7 +103,7 @@ func DeserializePeriodForDTO(intervals []string) (nodes.Period, error) {
 }
 
 // SerializeElement returns the dto content
-func SerializeElement(e nodes.Element) ElementDTO {
+func SerializeElement(e nodes.Element) (ElementDTO, error) {
 	var dto ElementDTO
 	dto.Id = e.Id()
 	dto.Traits = append(dto.Traits, e.Traits()...)
@@ -135,7 +139,95 @@ func SerializeElement(e nodes.Element) ElementDTO {
 		}
 	}
 
-	return dto
+	return dto, nil
+}
+
+// SerializeElementAtMoment returns a serialized element with values set for that moment, no period.
+// It is basically a freeze: only take values
+func SerializeElementAtMoment(element nodes.Element, moment time.Time) (ElementDTO, error) {
+	var result ElementDTO
+	if element == nil {
+		return result, nil
+	}
+
+	activity := element.ActivePeriod()
+	if !activity.Contains(moment) {
+		return result, nil
+	} else {
+		result.Id = element.Id()
+		result.Traits = element.Traits()
+	}
+
+	var globalErr error
+	formalInstance, isFormalInstance := element.(nodes.FormalInstance)
+	formalRelation, isFormalRelation := element.(nodes.FormalRelation)
+
+	if isFormalInstance {
+		for _, attribute := range formalInstance.Attributes() {
+			values, errAttr := formalInstance.PeriodValuesForAttribute(attribute)
+			if errAttr != nil {
+				globalErr = errors.Join(globalErr, errAttr)
+				continue
+			}
+
+			var matchingValue string
+			for value, period := range values {
+				if period.Contains(moment) {
+					matchingValue = value
+					break
+				}
+			}
+
+			attributeValueDTO := EntityValueDTO{
+				AttributeName:  attribute,
+				AttributeValue: matchingValue,
+			}
+
+			if len(matchingValue) == 0 {
+				continue
+			} else {
+				result.Attributes = append(result.Attributes, attributeValueDTO)
+			}
+		}
+	}
+
+	if globalErr != nil {
+		return result, globalErr
+	}
+
+	if isFormalRelation {
+		values := formalRelation.PeriodValuesPerRole()
+		for role, links := range values {
+			var matchingLinks []RelationRoleValueDTO
+			// remember that many links may match
+			for link, period := range links {
+				if period.Contains(moment) {
+					newLink := RelationRoleValueDTO{
+						Operand: link,
+					}
+
+					matchingLinks = append(matchingLinks, newLink)
+				}
+			}
+
+			if len(matchingLinks) != 0 {
+				if len(result.Roles) == 0 {
+					result.Roles = make(map[string][]RelationRoleValueDTO)
+				}
+
+				result.Roles[role] = matchingLinks
+			}
+		}
+	}
+
+	return result, globalErr
+}
+
+// SerializerAtMoment builds a dto serializer that serializes data at a given time
+func SerializerAtMoment(moment time.Time) ElementDTOSerializer {
+	return func(element nodes.Element) (ElementDTO, error) {
+		return SerializeElementAtMoment(element, moment)
+	}
 }
 
 // DeserializeElement returns an element from a dto
@@ -194,10 +286,10 @@ func DeserializeElement(dto ElementDTO) (nodes.Element, error) {
 	}
 }
 
-// serializeFullGraph maps a graph (value is huge) to its dto (huge object, going as pointer)
-func SerializeFullGraph(g *graphs.Graph) *GraphWithElementsDTO {
+// SerializeFullGraph maps a graph (value is huge) to its dto (huge object, going as pointer)
+func SerializeFullGraph(g *graphs.Graph, nodeSerializer ElementDTOSerializer) (*GraphWithElementsDTO, error) {
 	if g == nil {
-		return nil
+		return nil, nil
 	}
 
 	result := new(GraphWithElementsDTO)
@@ -219,12 +311,21 @@ func SerializeFullGraph(g *graphs.Graph) *GraphWithElementsDTO {
 		}
 	}
 
-	// copy each element
+	var globalErr error
+	// copy each element if significant (not empty) and not error
 	for _, node := range g.Nodes() {
+		mappedValue, errMapping := nodeSerializer(node.Value)
+		if errMapping != nil {
+			globalErr = errors.Join(globalErr, errMapping)
+			continue
+		} else if mappedValue.IsEmpty() {
+			continue
+		}
+
 		mappedNode := GraphNodeDTO{
 			Editable:    node.Editable,
 			SourceGraph: node.SourceGraph,
-			Value:       SerializeElement(node.Value),
+			Value:       mappedValue,
 		}
 
 		equivalenceSize := len(node.EquivalenceClass)
@@ -242,5 +343,5 @@ func SerializeFullGraph(g *graphs.Graph) *GraphWithElementsDTO {
 		result.Nodes = append(result.Nodes, mappedNode)
 	}
 
-	return result
+	return result, globalErr
 }

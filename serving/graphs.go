@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"time"
 
 	"github.com/zefrenchwan/patterns.git/graphs"
 	"github.com/zefrenchwan/patterns.git/storage"
@@ -108,12 +109,59 @@ func loadGraphHandler(wrapper ServiceParameters, w http.ResponseWriter, r *http.
 	switch rawGraph.Id {
 	case "":
 		w.WriteHeader(404)
+		return nil
 	default:
-		dto := storage.SerializeFullGraph(&rawGraph)
-		json.NewEncoder(w).Encode(dto)
+		if dto, err := storage.SerializeFullGraph(&rawGraph, storage.SerializeElement); err != nil {
+			return NewServiceInternalServerError(err.Error())
+		} else {
+			json.NewEncoder(w).Encode(dto)
+			return nil
+		}
+	}
+}
+
+// snapshotGraphHandler serializes a graph with visible elements at given time
+func snapshotGraphHandler(wrapper ServiceParameters, w http.ResponseWriter, r *http.Request) error {
+	defer r.Body.Close()
+
+	user, auth := wrapper.CurrentUser()
+	if !auth {
+		return NewServiceForbiddenError("should authenticate")
 	}
 
-	return nil
+	graphId := r.PathValue("graphId")
+	if len(graphId) == 0 {
+		return NewServiceHttpClientError("expecting graph id")
+	}
+
+	var moment time.Time
+	if momentStr := r.PathValue("moment"); len(momentStr) != len(URL_DATE_FORMAT) {
+		return NewServiceHttpClientError("Invalid date parameter")
+	} else if value, err := DeserializeTimeFromURL(momentStr); err != nil {
+		return NewServiceHttpClientError(err.Error())
+	} else {
+		moment = value
+	}
+
+	var rawGraph graphs.Graph
+	if raw, err := wrapper.Dao.LoadGraphForUser(wrapper.Ctx, user, graphId); err != nil {
+		return BuildApiErrorFromStorageError(err)
+	} else {
+		rawGraph = raw
+	}
+
+	switch rawGraph.Id {
+	case "":
+		w.WriteHeader(404)
+		return nil
+	default:
+		if dto, err := storage.SerializeFullGraph(&rawGraph, storage.SerializerAtMoment(moment)); err != nil {
+			return NewServiceInternalServerError(err.Error())
+		} else {
+			json.NewEncoder(w).Encode(dto)
+			return nil
+		}
+	}
 }
 
 // clearGraphsHandler clears all data about graphs (for test database)
