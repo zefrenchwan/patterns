@@ -76,7 +76,7 @@ type ElementDTOSerializer func(e nodes.Element) (ElementDTO, error)
 
 // IsEmpty returns true if element dto is non significant
 func (e ElementDTO) IsEmpty() bool {
-	return len(e.Id) == 0 || (len(e.Attributes) == 0 && len(e.Roles) == 0)
+	return len(e.Id) == 0
 }
 
 // EntityValueDTO is a DTO for entity values
