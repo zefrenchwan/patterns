@@ -375,16 +375,14 @@ begin
         select RRO.relation_id, 
         RRO.role_in_relation,
         RRV.relation_value as role_value,
-        PER.period_value as role_period, 
-        -- would be > 0 if a value in the relation is not authorized
-        case when AVI.graph_id is null then 1 else 0 end as exclude_relation
+        PER.period_value as role_period 
         from sgraphs.relation_role RRO
         join all_visible_relations AVR on AVR.element_id = RRO.relation_id
         join sgraphs.relation_role_values RRV on RRV.relation_role_id = RRO.relation_role_id
         join all_source_elements ELT on ELT.element_id = RRV.relation_value
         join sgraphs.periods PER on PER.period_id = RRV.relation_period_id
-        left outer join all_visible_graphs AVI on AVI.graph_id = ELT.graph_id
         where PER.period_value <> '];['
+        and not sgraphs.are_periods_disjoin(p_period, PER.period_value)
     ), visible_relation_values as (
         select 
         ARV.relation_id, 
@@ -392,8 +390,7 @@ begin
         array_agg(ARV.role_value order by ARV.role_value) as role_values, 
         array_agg(ARV.role_period order by ARV.role_value) as role_periods
         from all_relation_values ARV 
-        group by ARV.relation_id, ARV.role_in_relation
-        having sum(exclude_relation) = 0 
+        group by ARV.relation_id, ARV.role_in_relation 
     )
     select distinct
     ASE.graph_id, 

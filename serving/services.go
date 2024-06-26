@@ -49,6 +49,8 @@ func InitService(dao storage.Dao, initialContext context.Context, logger *zap.Su
 	AddAuthenticatedGetServiceHandlerToMux(mux, "/graph/delete/{graphId}/", deleteGraphHandler, parameters)
 	AddAuthenticatedGetServiceHandlerToMux(mux, "/graph/list/", listGraphHandler, parameters)
 	AddAuthenticatedGetServiceHandlerToMux(mux, "/graph/load/{graphId}/", loadGraphHandler, parameters)
+	AddAuthenticatedGetServiceHandlerToMux(mux, "/graph/slice/{graphId}/since/{moment}/", loadGraphSinceHandler, parameters)
+	AddAuthenticatedGetServiceHandlerToMux(mux, "/graph/slice/{graphId}/between/{start}/and/{end}/", loadGraphBetweenHandler, parameters)
 	AddAuthenticatedGetServiceHandlerToMux(mux, "/graph/snapshot/{graphId}/at/{moment}/", snapshotGraphHandler, parameters)
 	AddAuthenticatedGetServiceHandlerToMux(mux, "/graph/all/clear/", clearGraphsHandler, parameters)
 	// ELEMENTS OPERATIONS
