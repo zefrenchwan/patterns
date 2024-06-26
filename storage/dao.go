@@ -518,6 +518,16 @@ func (d *Dao) LoadGraphForUser(ctx context.Context, user string, graphId string)
 		return empty, errors.New("nil value")
 	}
 
+	return d.LoadGraphForUserDuringPeriod(ctx, user, graphId, nodes.NewFullPeriod())
+}
+
+// LoadGraphForUserDuringPeriod loads graph during a given period
+func (d *Dao) LoadGraphForUserDuringPeriod(ctx context.Context, user string, graphId string, period nodes.Period) (graphs.Graph, error) {
+	var empty graphs.Graph
+	if d == nil || d.pool == nil {
+		return empty, errors.New("nil value")
+	}
+
 	result := graphs.NewEmptyGraph()
 
 	// STEP ONE: LOAD METADATA
@@ -565,10 +575,11 @@ func (d *Dao) LoadGraphForUser(ctx context.Context, user string, graphId string)
 		return empty, globalErr
 	}
 
+	periodValue := serializePeriod(period)
 	// globalErr is nil, proceed to entities
 	// STEP TWO: ENTITIES
-	const queryEntities = "select * from susers.transitive_load_entities_in_graph($1, $2) order by element_id, attribute_key asc"
-	rowsEntities, errEntities := d.pool.Query(ctx, queryEntities, user, graphId)
+	const queryEntities = "select * from susers.transitive_load_entities_in_graph($1, $2, $3) order by element_id, attribute_key asc"
+	rowsEntities, errEntities := d.pool.Query(ctx, queryEntities, user, graphId, periodValue)
 	if errEntities != nil {
 		return empty, errEntities
 	}
@@ -662,8 +673,8 @@ func (d *Dao) LoadGraphForUser(ctx context.Context, user string, graphId string)
 
 	// globalErr is nil, proceed to relations
 	// STEP THREE: RELATIONS
-	const queryRelations = "select * from susers.transitive_load_relations_in_graph($1, $2) order by element_id asc"
-	rowsRelation, errRelation := d.pool.Query(ctx, queryRelations, user, graphId)
+	const queryRelations = "select * from susers.transitive_load_relations_in_graph($1, $2, $3) order by element_id asc"
+	rowsRelation, errRelation := d.pool.Query(ctx, queryRelations, user, graphId, periodValue)
 	if errRelation != nil {
 		return empty, errRelation
 	}

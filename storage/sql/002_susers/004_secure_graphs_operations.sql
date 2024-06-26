@@ -239,7 +239,7 @@ end; $$;
 
 
 -- susers.transitive_load_base_elements_in_graph loads all visible elements from a graph to all its dependencies
-create or replace function susers.transitive_load_base_elements_in_graph(p_user_login text, p_id text)
+create or replace function susers.transitive_load_base_elements_in_graph(p_user_login text, p_id text, p_period text)
 returns table (
     graph_id text, editable bool, 
     element_id text, element_type int, activity text, traits text[], 
@@ -265,6 +265,7 @@ begin
         from sgraphs.elements ELT  
         join all_source_graphs ASG on ASG.graph_id = ELT.graph_id
         join sgraphs.periods PER on PER.period_id = ELT.element_period
+        where not sgraphs.are_periods_disjoin(p_period, PER.period_value)
     ), all_traits_for_elements as (
         select AEG.element_id, array_agg(TRA.trait) as traits 
         from all_elements_in_graphs AEG
@@ -300,7 +301,7 @@ alter function susers.transitive_load_base_elements_in_graph owner to upa;
 
 
 -- susers.transitive_load_entities_in_graph gets all entities an user may use from a graph
-create or replace function susers.transitive_load_entities_in_graph(p_user_login text, p_id text)
+create or replace function susers.transitive_load_entities_in_graph(p_user_login text, p_id text, p_period text)
 returns table (
     graph_id text, editable bool, 
     element_id text, activity text, traits text[], 
@@ -315,7 +316,7 @@ begin
         select TLB.graph_id, TLB.editable, 
         TLB.element_id, TLB.activity, TLB.traits, 
         TLB.equivalence_class, TLB.equivalence_class_graph
-        from susers.transitive_load_base_elements_in_graph(p_user_login, p_id) TLB
+        from susers.transitive_load_base_elements_in_graph(p_user_login, p_id, p_period) TLB
         where TLB.element_type in (1,10)
     ), all_entities as (
         select ETA.entity_id as element_id, ETA.attribute_name as attribute_key,  
@@ -344,7 +345,7 @@ end; $$;
 alter function susers.transitive_load_entities_in_graph owner to upa;
 
 -- susers.transitive_load_relations_in_graph loads all relations in dependent graphs starting at p_id a given graph
-create or replace function susers.transitive_load_relations_in_graph(p_user_login text, p_id text)
+create or replace function susers.transitive_load_relations_in_graph(p_user_login text, p_id text, p_period text)
 returns table (
     graph_id text, editable bool, 
     element_id text, activity text, traits text[], 
@@ -358,6 +359,18 @@ begin
     with all_visible_graphs as (
         select TGS.graph_id
         from susers.transitive_visible_graphs_since(p_user_login, p_id) TGS
+    ), all_source_elements as (
+        select TLB.graph_id, TLB.editable, 
+        TLB.element_id, TLB.activity, TLB.traits, 
+        TLB.equivalence_class, TLB.equivalence_class_graph, 
+        TLB.element_type
+        from susers.transitive_load_base_elements_in_graph(p_user_login, p_id, p_period) TLB
+        where TLB.activity <> '];['
+    ), all_visible_relations as (
+        select 
+        ALLSE.element_id
+        from all_source_elements ALLSE
+        where ALLSE.element_type in (2,10)
     ), all_relation_values as (
         select RRO.relation_id, 
         RRO.role_in_relation,
@@ -366,8 +379,9 @@ begin
         -- would be > 0 if a value in the relation is not authorized
         case when AVI.graph_id is null then 1 else 0 end as exclude_relation
         from sgraphs.relation_role RRO
+        join all_visible_relations AVR on AVR.element_id = RRO.relation_id
         join sgraphs.relation_role_values RRV on RRV.relation_role_id = RRO.relation_role_id
-        join sgraphs.elements ELT on ELT.element_id = RRV.relation_value
+        join all_source_elements ELT on ELT.element_id = RRV.relation_value
         join sgraphs.periods PER on PER.period_id = RRV.relation_period_id
         left outer join all_visible_graphs AVI on AVI.graph_id = ELT.graph_id
         where PER.period_value <> '];['
@@ -380,12 +394,6 @@ begin
         from all_relation_values ARV 
         group by ARV.relation_id, ARV.role_in_relation
         having sum(exclude_relation) = 0 
-    ), all_source_elements as (
-        select TLB.graph_id, TLB.editable, 
-        TLB.element_id, TLB.activity, TLB.traits, 
-        TLB.equivalence_class, TLB.equivalence_class_graph
-        from susers.transitive_load_base_elements_in_graph(p_user_login, p_id) TLB
-        where TLB.element_type in (2,10)
     )
     select distinct
     ASE.graph_id, 

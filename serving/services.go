@@ -102,12 +102,14 @@ func AddServiceHandlerToMux(mux *http.ServeMux, method string, urlPattern string
 			}
 		}
 
-		if err := handler(parameters, w, r); err != nil {
-			switch customError, ok := err.(ServiceHttpError); ok {
+		// isolated call, to include time monitoring later
+		errHandler := handler(parameters, w, r)
+		if errHandler != nil {
+			switch customError, ok := errHandler.(ServiceHttpError); ok {
 			case true:
 				http.Error(w, customError.Error(), customError.HttpCode())
 			default:
-				http.Error(w, "Internal error: "+err.Error(), http.StatusInternalServerError)
+				http.Error(w, "Internal error: "+errHandler.Error(), http.StatusInternalServerError)
 			}
 		}
 	})
