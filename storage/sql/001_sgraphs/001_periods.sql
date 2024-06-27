@@ -1,3 +1,5 @@
+-- sgraphs.empty_intersection returns true if two intervals are disjoint. 
+-- Intervals are assumed neither to be full, nor to be empty. 
 create or replace function sgraphs.empty_intersection(
 		min_a timestamp without time zone,
 		min_in_a bool,
@@ -67,7 +69,11 @@ begin
 	end if;
 end; $$;
 
-create or replace function sgraphs.are_period_disjoin_with_interval(p_interval text, p_period text) returns bool language plpgsql as $$
+alter function sgraphs.empty_intersection owner to upa;
+
+-- sgraphs.is_period_disjoin_with_interval returns true if a period is disjoint with an interval. 
+-- Especially, it means that said interval is disjoint with all intervals in the period. 
+create or replace function sgraphs.is_period_disjoin_with_interval(p_interval text, p_period text) returns bool language plpgsql as $$
 declare
     -- split interval parameter
 	l_interval_left text;
@@ -154,6 +160,9 @@ begin
     return true;
 end; $$;
 
+alter function sgraphs.is_period_disjoin_with_interval owner to upa;
+
+-- sgraphs.are_periods_disjoin returns true if two periods are disjoin
 create or replace function sgraphs.are_periods_disjoin(p_period text, p_other_period text) returns bool language plpgsql as $$
 declare
     -- split period
@@ -175,7 +184,7 @@ begin
         elsif l_period_element = ']-oo;+oo[' then 
             return false;
         else
-            select sgraphs.are_period_disjoin_with_interval(l_period_element, p_other_period) into l_local_disjoin;
+            select sgraphs.is_period_disjoin_with_interval(l_period_element, p_other_period) into l_local_disjoin;
             if not l_local_disjoin then 
                 return false;
             end if;             
@@ -184,3 +193,19 @@ begin
 
     return true;
 end; $$;
+
+alter function sgraphs.are_periods_disjoin owner to upa;
+
+
+-- sgraphs.copy_period copies a period by id, and p_desination contains the id of the new period
+create or replace procedure sgraphs.copy_period(p_source in bigint, p_destination out bigint)
+language plpgsql as $$
+declare 
+begin 
+	insert into sgraphs.periods(period_min, period_max, period_value)
+	select PER.period_min, PER.period_max, PER.period_value 
+	from sgraphs.periods PER where period_id = p_source
+	returning period_id into p_destination;
+end; $$;
+
+alter procedure sgraphs.copy_period owner to upa;

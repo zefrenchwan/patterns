@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 
+	"github.com/google/uuid"
 	"github.com/zefrenchwan/patterns.git/storage"
 )
 
@@ -29,14 +30,13 @@ func loadElementByIdHandler(wrapper ServiceParameters, w http.ResponseWriter, r 
 	} else if element == nil {
 		w.WriteHeader(404)
 		return nil
-	} else {
-		if response, err := storage.SerializeElement(element); err != nil {
-			return NewServiceInternalServerError(err.Error())
-		} else {
-			json.NewEncoder(w).Encode(response)
-			return nil
-		}
+	} else if response, err := storage.SerializeElement(element); err != nil {
+		return NewServiceInternalServerError(err.Error())
+	} else if err := json.NewEncoder(w).Encode(response); err != nil {
+		return NewServiceInternalServerError(err.Error())
 	}
+
+	return nil
 }
 
 // upsertElementInGraphHandler loads an element dto and then saves it to database
@@ -95,5 +95,35 @@ func deleteElementHandler(wrapper ServiceParameters, w http.ResponseWriter, r *h
 	}
 
 	w.WriteHeader(200)
+	return nil
+}
+
+// createEquivalenceElementHandler copies an element to another graph and returns its id
+func createEquivalenceElementHandler(wrapper ServiceParameters, w http.ResponseWriter, r *http.Request) error {
+	defer r.Body.Close()
+
+	user, auth := wrapper.CurrentUser()
+	if !auth {
+		return NewServiceForbiddenError("should authenticate")
+	}
+
+	elementId := r.PathValue("elementId")
+	if len(elementId) == 0 {
+		return NewServiceHttpClientError("expecting element id")
+	}
+
+	graphId := r.PathValue("graphId")
+	if len(graphId) == 0 {
+		return NewServiceHttpClientError("expecting graph id")
+	}
+
+	newElementId := uuid.NewString()
+
+	if err := wrapper.Dao.CreateEquivalentElement(wrapper.Ctx, user, elementId, graphId, newElementId); err != nil {
+		return NewServiceInternalServerError(err.Error())
+	} else if err := json.NewEncoder(w).Encode(newElementId); err != nil {
+		return NewServiceInternalServerError(err.Error())
+	}
+
 	return nil
 }

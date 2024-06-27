@@ -519,9 +519,9 @@ declare
 	l_graph_id text;
 begin
 	
-    select GRA.graph_id into l_graph_id 
+    select ELT.graph_id into l_graph_id 
     from sgraphs.elements ELT 
-    join sgraphs.graphs GRA on ELT.graph_id = GRA.graph_id;
+    where ELT.element_id = p_element_id;
 
     if l_graph_id is null then 
         -- just returns empty
@@ -579,6 +579,29 @@ begin
 end;$$;
 
 alter function susers.load_element_by_id owner to upa;
+
+
+-- susers.create_equivalent_element_into_graph creates an equivalent node in a graph
+create or replace procedure susers.create_equivalent_element_into_graph(
+    p_user_login text, p_source_id text, p_destination_graph_id text, p_new_element_id text
+) language plpgsql as $$
+declare 
+    l_graph_id text;
+begin 
+    select graph_id into l_graph_id 
+    from sgraphs.elements 
+    where element_id = p_source_id;
+
+    if l_graph_id is null then 
+        raise exception 'no graph' using errcode = '42704';
+    end if;
+
+    call susers.accept_user_access_to_resource_or_raise(p_user_login, 'graph', ARRAY['modifier','observer'], false, l_graph_id);
+    call susers.accept_user_access_to_resource_or_raise(p_user_login, 'graph', ARRAY['modifier'], false, p_destination_graph_id);
+    call sgraphs.create_copy_node(p_source_id, p_destination_graph_id, p_new_element_id); 
+end; $$;
+
+alter procedure susers.create_equivalent_element_into_graph owner to upa;
 
 -- susers.delete_element deletes an element if it does not appear in a relation as a parameter
 create or replace procedure susers.delete_element(p_user_login text, p_element_id text)

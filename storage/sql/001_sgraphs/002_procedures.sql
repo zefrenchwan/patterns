@@ -388,3 +388,161 @@ begin
 end; $$;
 
 alter function sgraphs.serialize_period owner to upa;
+
+-- sgraphs.create_copy_node copies an element from a graph to another. 
+-- It loads the source, copies it all, and adds it to the destination graph
+create or replace procedure sgraphs.create_copy_node(p_source_id text, p_destination_graph text, p_destination_id text)
+language plpgsql as $$
+declare 
+	l_source_graph text;
+	-- element common variables
+	l_current_period bigint;
+	l_new_period bigint;
+	l_element_type int;
+	----------------------
+	-- relations values --
+	----------------------
+	c_relation_role_details CURSOR(p_element_id text) FOR
+		select 
+		REL.role_in_relation, 
+		VAL.relation_value, 
+		VAL.relation_period_id
+		from sgraphs.relation_role REL
+		join sgraphs.relation_role_values VAL on REL.relation_role_id  = VAL.relation_role_id
+		where relation_id = p_element_id;
+	l_relation_role_details record;
+	l_role_in_relation text;
+	l_relation_value text;
+	l_relation_period bigint;
+	l_new_relation_period bigint;
+	l_new_relation_role_id bigint;
+	-------------------
+	-- entity values --
+	-------------------
+	c_entity_values CURSOR(p_element_id text) FOR 
+		select EAT.attribute_name, EAT.attribute_value, EAT.period_id  
+		from sgraphs.entity_attributes EAT
+		where entity_id = p_element_id;
+	l_entity_values record;
+	l_attr_name text;
+	l_attr_value text;
+	l_new_entity_period bigint;
+	l_previous_entity_period bigint;
+begin 
+	-- test if id is not set yet
+	if exists (select 1 from sgraphs.elements where element_id = p_destination_id) then 
+		raise exception 'element already exists' using errcode = '42710';
+	end if;
+	-- test if source element exists
+	select graph_id, element_type, element_period into l_source_graph, l_element_type, l_current_period
+	from sgraphs.elements
+	where element_id = p_source_id;
+	-- no graph, no source
+	if l_source_graph is null then 
+		raise exception 'source element does not exist' using errcode = '42704';
+	end if;
+
+	------------------------
+	-- CLONE ELEMENT PART --
+	------------------------
+	call sgraphs.copy_period(l_current_period, l_new_period);
+
+	insert into sgraphs.elements(element_id, graph_id, element_type, element_period)
+	values (p_destination_id, p_destination_graph, l_element_type, l_new_period);
+
+	-- Get the traits of the elements from the source graph, and 
+	-- insert traits that did not exist
+	with original_traits as (
+		select TRA.trait_type, TRA.trait
+		from sgraphs.element_trait ETR
+		join sgraphs.traits TRA on TRA.trait_id = ETR.trait_id
+		where TRA.graph_id = l_source_graph
+		and ETR.element_id = p_source_id 
+	), destination_traits as (
+		select TRA.trait_type, TRA.trait
+		from sgraphs.element_trait ETR
+		join sgraphs.traits TRA on TRA.trait_id = ETR.trait_id
+		where TRA.graph_id = p_destination_graph
+	), new_traits_to_insert as (
+		select OTRA.trait_type, OTRA.trait
+		from original_traits OTRA
+		left outer join destination_traits NTRA on OTRA.trait = NTRA.trait and NTRA.trait_type = OTRA.trait_type
+		where NTRA.trait is null 
+	)
+	insert into sgraphs.traits(trait_id, graph_id,trait_type, trait)
+	select gen_random_uuid()::text, p_destination_graph, TRI.trait_type, TRI.trait 
+	from new_traits_to_insert TRI;
+
+	-- insert traits links
+	with source_elements_traits as (
+		select TRA.trait, TRA.trait_type
+		from sgraphs.element_trait ETR
+		join sgraphs.traits TRA on TRA.trait_id = ETR.trait_id
+		where ETR.element_id = p_source_id	
+	), matching_dest_traits as (
+		select EQTRA.trait_id
+		from source_elements_traits SELT
+		join sgraphs.traits EQTRA on EQTRA.trait = SELT.trait and SELT.trait_type = EQTRA.trait_type 
+		where EQTRA.graph_id = p_destination_graph	 
+	)
+	insert into sgraphs.element_trait(element_id, trait_id)
+	select p_destination_id, MDT.trait_id
+	from matching_dest_traits MDT;
+
+	-----------------------------------------
+	-- CLONE RELATIONAL PART OF THE SOURCE --
+	-----------------------------------------
+	-- element is now complete, copy entity or relation part
+	OPEN c_relation_role_details(p_source_id);
+	LOOP    
+		FETCH NEXT FROM c_relation_role_details INTO l_relation_role_details;
+		EXIT WHEN NOT FOUND;
+		l_role_in_relation = l_relation_role_details.role_in_relation;
+		l_relation_value = l_relation_role_details.relation_value;
+		l_relation_period = l_relation_role_details.relation_period_id;
+		
+		-- clone period 
+		call sgraphs.copy_period(l_relation_period, l_new_relation_period);
+		-- insert new relation role and then new relation role value. 
+		-- Because a relation role may contain many values, be sure to insert role once.  
+		select ROL.role_in_relation into l_new_relation_role_id
+		from sgraphs.relation_role ROL
+		where ROL.relation_id = p_destination_id 
+		and ROL.role_in_relation = l_role_in_relation;
+		if l_new_relation_role_id is null then 	
+			insert into sgraphs.relation_role(relation_id, role_in_relation) 
+			select p_destination_id, l_role_in_relation
+			returning relation_role_id into l_new_relation_role_id;
+		end if; 
+		-- insert the value anyway
+		insert into sgraphs.relation_role_values(relation_role_id, relation_value, relation_period_id)
+		select l_new_relation_role_id, l_relation_value, l_new_relation_period;
+	END LOOP;
+	CLOSE c_relation_role_details;
+
+	--------------------------------------
+	-- CLONE ENTITY PART OF THE ELEMENT --
+	--------------------------------------
+	OPEN c_entity_values(p_source_id);
+	LOOP    
+		FETCH NEXT FROM c_entity_values INTO l_entity_values;
+		EXIT WHEN NOT FOUND;
+		l_attr_name = l_entity_values.attribute_name ;
+		l_attr_value = l_entity_values.attribute_value;
+		l_previous_entity_period = l_entity_values.period_id;
+
+		call sgraphs.copy_period(l_previous_entity_period, l_new_entity_period);
+	
+		insert into sgraphs.entity_attributes(entity_id, attribute_name, attribute_value, period_id)
+		select p_destination_id, l_attr_name, l_attr_value, l_new_entity_period;
+	END LOOP;
+	CLOSE c_entity_values;
+
+	-------------------------------------
+	-- INSERT LINK AS A NEW NODE ENTRY --
+	-------------------------------------
+	insert into sgraphs.nodes(source_element_id, child_element_id)
+	select p_source_id, p_destination_id;
+end; $$;
+
+alter procedure sgraphs.create_copy_node owner to upa;

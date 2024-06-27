@@ -54,6 +54,7 @@ func InitService(dao storage.Dao, initialContext context.Context, logger *zap.Su
 	AddAuthenticatedGetServiceHandlerToMux(mux, "/graph/snapshot/{graphId}/at/{moment}/", snapshotGraphHandler, parameters)
 	AddAuthenticatedGetServiceHandlerToMux(mux, "/graph/all/clear/", clearGraphsHandler, parameters)
 	// ELEMENTS OPERATIONS
+	AddAuthenticatedGetServiceHandlerToMux(mux, "/elements/copy/{elementId}/to/{graphId}/", createEquivalenceElementHandler, parameters)
 	AddAuthenticatedGetServiceHandlerToMux(mux, "/elements/load/{elementId}/", loadElementByIdHandler, parameters)
 	AddAuthenticatedPostServiceHandlerToMux(mux, "/elements/upsert/graph/{graphId}/", upsertElementInGraphHandler, parameters)
 	AddAuthenticatedGetServiceHandlerToMux(mux, "/elements/delete/{elementId}/", deleteElementHandler, parameters)

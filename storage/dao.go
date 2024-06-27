@@ -170,58 +170,6 @@ func (d *Dao) UpsertUser(ctx context.Context, creator, login, password string) e
 	return errExec
 }
 
-// LockUser flags user as inactive
-func (d *Dao) LockUser(ctx context.Context, actor, userId string) error {
-	if d == nil || d.pool == nil {
-		return errors.New("nil value")
-	}
-
-	_, errExec := d.pool.Exec(ctx, "call susers.lock_user($1,$2)", actor, userId)
-	return errExec
-}
-
-// UnlockUser flags user as active
-func (d *Dao) UnlockUser(ctx context.Context, actor, userId string) error {
-	if d == nil || d.pool == nil {
-		return errors.New("nil value")
-	}
-
-	_, errExec := d.pool.Exec(ctx, "call susers.unlock_user($1,$2)", actor, userId)
-	return errExec
-}
-
-// DeleteUser deletes any information about the user
-func (d *Dao) DeleteUser(ctx context.Context, actor, login string) error {
-	if d == nil || d.pool == nil {
-		return errors.New("nil value")
-	}
-
-	_, errExec := d.pool.Exec(ctx, "call susers.delete_user($1,$2)", actor, login)
-	return errExec
-}
-
-// grantAllResourcesTo grants a role and a class to another user
-func (d *Dao) GrantAllResourcesTo(ctx context.Context, granter, login, role, class string) error {
-	if d == nil || d.pool == nil {
-		return errors.New("nil value")
-	}
-
-	_, errExec := d.pool.Exec(ctx, "call susers.grant_all_role_auth_to($1, $2, $3, $4)", granter, login, role, class)
-	return errExec
-}
-
-func (d *Dao) GrantResourcesTo(ctx context.Context, granter, login, role, class, resource string) error {
-	return nil
-}
-
-func (d *Dao) RevokeAllResourcesTo(ctx context.Context, granter, login, role, class string) error {
-	return nil
-}
-
-func (d *Dao) RevokeResourcesTo(ctx context.Context, granter, login, role, class, resource string) error {
-	return nil
-}
-
 // CreateGraph returns the id of built graph, or an error.
 func (d *Dao) CreateGraph(ctx context.Context, creator, name, description string, metadata map[string][]string, sources []string) (string, error) {
 	if d == nil || d.pool == nil {
@@ -389,8 +337,9 @@ func (d *Dao) LoadElementForUser(ctx context.Context, user string, elementId str
 	var elementType = -1
 
 	var globalErr error
+	var counter int
 	for rows.Next() {
-
+		counter++
 		var rawValues []any
 		if rawData, err := rows.Values(); err != nil {
 			globalErr = errors.Join(globalErr, err)
@@ -499,6 +448,8 @@ func (d *Dao) LoadElementForUser(ctx context.Context, user string, elementId str
 
 	if globalErr != nil {
 		return nil, globalErr
+	} else if counter == 0 {
+		return nil, nil
 	}
 
 	switch elementType {
@@ -890,6 +841,22 @@ func (d *Dao) UpsertElement(ctx context.Context, user string, graphId string, el
 
 	errCommit := transaction.Commit(ctx)
 	return errCommit
+}
+
+// CreateEquivalentElement copies an element to a given graph.
+// NewElementId is a parameter to return to the caller
+func (d *Dao) CreateEquivalentElement(ctx context.Context, user string, elementSourceId, graphId, newElementId string) error {
+	if d == nil || d.pool == nil {
+		return errors.New("nil value")
+	}
+
+	_, errUpsertElement := d.pool.Exec(
+		ctx,
+		"call susers.create_equivalent_element_into_graph($1, $2, $3, $4)",
+		user, elementSourceId, graphId, newElementId,
+	)
+
+	return errUpsertElement
 }
 
 // ClearGraph clear the whole graphs schema

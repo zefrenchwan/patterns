@@ -40,10 +40,11 @@ func createGraphHandler(wrapper ServiceParameters, w http.ResponseWriter, r *htt
 	newId, errCreate := wrapper.Dao.CreateGraph(wrapper.Ctx, user, input.Name, input.Description, input.Metadata, input.Sources)
 	if errCreate != nil {
 		return BuildApiErrorFromStorageError(errCreate)
+	} else if errResponse := json.NewEncoder(w).Encode(newId); errResponse != nil {
+		return NewServiceInternalServerError(errResponse.Error())
 	}
 
-	errResponse := json.NewEncoder(w).Encode(newId)
-	return errResponse
+	return nil
 }
 
 // upsertElementInGraphHandler loads an element dto and then saves it to database
@@ -80,9 +81,10 @@ func listGraphHandler(wrapper ServiceParameters, w http.ResponseWriter, r *http.
 	availableGraphs, errLoad := wrapper.Dao.ListGraphsForUser(wrapper.Ctx, user)
 	if errLoad != nil {
 		return NewServiceInternalServerError(errLoad.Error())
+	} else if err := json.NewEncoder(w).Encode(availableGraphs); err != nil {
+		return NewServiceInternalServerError(err.Error())
 	}
 
-	json.NewEncoder(w).Encode(availableGraphs)
 	return nil
 }
 
@@ -114,11 +116,12 @@ func loadGraphHandler(wrapper ServiceParameters, w http.ResponseWriter, r *http.
 	default:
 		if dto, err := storage.SerializeFullGraph(&rawGraph, storage.SerializeElement); err != nil {
 			return NewServiceInternalServerError(err.Error())
-		} else {
-			json.NewEncoder(w).Encode(dto)
-			return nil
+		} else if err := json.NewEncoder(w).Encode(dto); err != nil {
+			return NewServiceInternalServerError(err.Error())
 		}
 	}
+
+	return nil
 }
 
 // loadGraphSinceHandler is a partial graph load, from a moment to +oo
@@ -159,11 +162,12 @@ func loadGraphSinceHandler(wrapper ServiceParameters, w http.ResponseWriter, r *
 	default:
 		if dto, err := storage.SerializeFullGraph(&rawGraph, storage.SerializeElement); err != nil {
 			return NewServiceInternalServerError(err.Error())
-		} else {
-			json.NewEncoder(w).Encode(dto)
-			return nil
+		} else if err := json.NewEncoder(w).Encode(dto); err != nil {
+			return NewServiceInternalServerError(err.Error())
 		}
 	}
+
+	return nil
 }
 
 func loadGraphBetweenHandler(wrapper ServiceParameters, w http.ResponseWriter, r *http.Request) error {
@@ -208,11 +212,12 @@ func loadGraphBetweenHandler(wrapper ServiceParameters, w http.ResponseWriter, r
 	default:
 		if dto, err := storage.SerializeFullGraph(&rawGraph, storage.SerializeElement); err != nil {
 			return NewServiceInternalServerError(err.Error())
-		} else {
-			json.NewEncoder(w).Encode(dto)
-			return nil
+		} else if err := json.NewEncoder(w).Encode(dto); err != nil {
+			return NewServiceInternalServerError(err.Error())
 		}
 	}
+
+	return nil
 }
 
 // snapshotGraphHandler serializes a graph with visible elements at given time
@@ -261,11 +266,12 @@ func snapshotGraphHandler(wrapper ServiceParameters, w http.ResponseWriter, r *h
 	default:
 		if dto, err := storage.SerializeFullGraph(&rawGraph, storage.SerializerAtMoment(moment)); err != nil {
 			return NewServiceInternalServerError(err.Error())
-		} else {
-			json.NewEncoder(w).Encode(dto)
-			return nil
+		} else if err := json.NewEncoder(w).Encode(dto); err != nil {
+			return NewServiceInternalServerError(err.Error())
 		}
 	}
+
+	return nil
 }
 
 // clearGraphsHandler clears all data about graphs (for test database)
