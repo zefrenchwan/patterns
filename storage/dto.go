@@ -46,19 +46,13 @@ type GraphWithElementsDTO struct {
 	Nodes       []GraphNodeDTO      `json:"nodes"`
 }
 
-// EquivalenceObjectDTO defines an equivalence entry as a source graph and source element.
-// It is easier to understand than a map[element id] graph id
-type EquivalenceObjectDTO struct {
-	SourceGraph   string `json:"graph"`
-	SourceElement string `json:"element"`
-}
-
 // GraphNodeDTO represents a DTO for a node in a graph (same structure)
 type GraphNodeDTO struct {
-	EquivalenceClassGraph []EquivalenceObjectDTO `json:"equivalents,omitempty"`
-	SourceGraph           string                 `json:"source"`
-	Value                 ElementDTO             `json:"element"`
-	Editable              bool                   `json:"editable"`
+	SourceGraph            string     `json:"source"`
+	Value                  ElementDTO `json:"element"`
+	Editable               bool       `json:"editable"`
+	EquivalenceParent      string     `json:"equivalence_parent"`
+	EquivalenceParentGraph string     `json:"equivalence_parent_graph"`
 }
 
 // ElementDTO regroups entity and relation content into a single DTO
@@ -323,21 +317,11 @@ func SerializeFullGraph(g *graphs.Graph, nodeSerializer ElementDTOSerializer) (*
 		}
 
 		mappedNode := GraphNodeDTO{
-			Editable:    node.Editable,
-			SourceGraph: node.SourceGraph,
-			Value:       mappedValue,
-		}
-
-		equivalenceSize := len(node.EquivalenceClass)
-		if equivalenceSize > 0 {
-			for localElement, localGraph := range node.EquivalenceClass {
-				newEquivalentDTO := EquivalenceObjectDTO{
-					SourceGraph:   localGraph,
-					SourceElement: localElement,
-				}
-
-				mappedNode.EquivalenceClassGraph = append(mappedNode.EquivalenceClassGraph, newEquivalentDTO)
-			}
+			Editable:               node.Editable,
+			SourceGraph:            node.SourceGraph,
+			Value:                  mappedValue,
+			EquivalenceParent:      node.EquivalenceParent,
+			EquivalenceParentGraph: node.EquivalenceParentGraph,
 		}
 
 		result.Nodes = append(result.Nodes, mappedNode)

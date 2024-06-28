@@ -566,14 +566,14 @@ func (d *Dao) LoadGraphForUserDuringPeriod(ctx context.Context, user string, gra
 			traits = mapAnyToStringSlice(rawEntityAttr[4])
 		}
 
-		var equivalenceClass []string
-		var equivalenceClassGraph []string
+		var equivalenceParent string
+		var equivalenceParentGraph string
 		if rawEntityAttr[5] != nil {
-			equivalenceClass = mapAnyToStringSlice(rawEntityAttr[5])
+			equivalenceParent = rawEntityAttr[5].(string)
 		}
 
 		if rawEntityAttr[6] != nil {
-			equivalenceClassGraph = mapAnyToStringSlice(rawEntityAttr[6])
+			equivalenceParentGraph = rawEntityAttr[6].(string)
 		}
 
 		var attributeKey string
@@ -589,12 +589,6 @@ func (d *Dao) LoadGraphForUserDuringPeriod(ctx context.Context, user string, gra
 
 		if rawEntityAttr[9] != nil {
 			attributePeriodValues = mapAnyToStringSlice(rawEntityAttr[9])
-		}
-
-		localEquivalenceClassGraph := make(map[string]string)
-		size := len(equivalenceClassGraph)
-		for index := 0; index < size; index++ {
-			localEquivalenceClassGraph[equivalenceClass[index]] = equivalenceClassGraph[index]
 		}
 
 		periodsError := false
@@ -613,8 +607,9 @@ func (d *Dao) LoadGraphForUserDuringPeriod(ctx context.Context, user string, gra
 			continue
 		}
 
-		result.AddToFormalInstance(currentGraphId, currentGraphEditable, localEquivalenceClassGraph,
-			elementId, traits, activity, attributeKey, attributeValues, attributePeriods,
+		result.AddToFormalInstance(currentGraphId, currentGraphEditable,
+			elementId, equivalenceParent, equivalenceParentGraph,
+			traits, activity, attributeKey, attributeValues, attributePeriods,
 		)
 	}
 
@@ -661,14 +656,14 @@ func (d *Dao) LoadGraphForUserDuringPeriod(ctx context.Context, user string, gra
 			traits = mapAnyToStringSlice(rawRelation[4])
 		}
 
-		var equivalenceClass []string
-		var equivalenceClassGraph []string
+		var equivalenceParent string
+		var equivalenceParentGraph string
 		if rawRelation[5] != nil {
-			equivalenceClass = mapAnyToStringSlice(rawRelation[5])
+			equivalenceParent = rawRelation[5].(string)
 		}
 
 		if rawRelation[6] != nil {
-			equivalenceClassGraph = mapAnyToStringSlice(rawRelation[6])
+			equivalenceParentGraph = rawRelation[6].(string)
 		}
 
 		var roleName string
@@ -700,16 +695,12 @@ func (d *Dao) LoadGraphForUserDuringPeriod(ctx context.Context, user string, gra
 			continue
 		}
 
-		localEquivalenceClassGraph := make(map[string]string)
-		for index := 0; index < len(equivalenceClassGraph); index++ {
-			localEquivalenceClassGraph[equivalenceClass[index]] = equivalenceClassGraph[index]
-		}
-
 		for index := 0; index < len(roleValues); index++ {
 			switch rolePeriod, errPeriod := deserializePeriod(rolePeriods[index]); errPeriod {
 			case nil:
-				result.AddToFormalRelation(currentGraphId, currentGraphEditable, localEquivalenceClassGraph,
-					elementId, traits, activity, roleName, roleValues[index], rolePeriod)
+				result.AddToFormalRelation(currentGraphId, currentGraphEditable,
+					elementId, equivalenceParent, equivalenceParentGraph,
+					traits, activity, roleName, roleValues[index], rolePeriod)
 			default:
 				globalErr = errors.Join(globalErr, errPeriod)
 			}

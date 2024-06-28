@@ -243,7 +243,7 @@ create or replace function susers.transitive_load_base_elements_in_graph(p_user_
 returns table (
     graph_id text, editable bool, 
     element_id text, element_type int, activity text, traits text[], 
-    equivalence_class text[], equivalence_class_graph text[]
+    equivalence_parent text, equivalence_parent_graph text
 ) language plpgsql as $$
 declare
 begin 
@@ -272,15 +272,15 @@ begin
         join sgraphs.element_trait ETR on AEG.element_id = ETR.element_id
         join sgraphs.traits TRA on TRA.trait_id = ETR.trait_id 
         group by AEG.element_id
-    ), all_accessible_equivalences as (
+    ), equivalence_parent as (
         select NOD.child_element_id as element_id, 
-        array_agg(NOD.source_element_id order by AGR1.graph_id) as equivalence_class,
-        array_agg(AGR1.graph_id order by AGR1.graph_id) as equivalence_class_graph
+        NOD.source_element_id as equivalence_parent,
+        AGR1.graph_id as equivalence_parent_graph
         from sgraphs.nodes NOD
-        -- to ensure the source graph is visible. We take all source graphs, not only current
+        -- to ensure the source graph is visible
         join all_elements_in_graphs AGR1 on AGR1.element_id = NOD.source_element_id
         join all_elements_in_graphs AGR2 on AGR2.element_id = NOD.child_element_id
-        group by NOD.child_element_id
+        
     )
     select 
     AIG.graph_id, 
@@ -289,11 +289,11 @@ begin
     AIG.element_type,
     AIG.activity,
     ATE.traits,
-    AAE.equivalence_class,
-    AAE.equivalence_class_graph
+    AAE.equivalence_parent,
+    AAE.equivalence_parent_graph
     from all_elements_in_graphs AIG 
     left outer join all_traits_for_elements ATE on ATE.element_id = AIG.element_id
-    left outer join all_accessible_equivalences AAE on AAE.element_id = AIG.element_id;
+    left outer join equivalence_parent AAE on AAE.element_id = AIG.element_id;
 
 end;$$;
 
@@ -305,7 +305,7 @@ create or replace function susers.transitive_load_entities_in_graph(p_user_login
 returns table (
     graph_id text, editable bool, 
     element_id text, activity text, traits text[], 
-    equivalence_class text[], equivalence_class_graph text[],
+    equivalence_parent text, equivalence_parent_graph text,
     attribute_key text, attribute_values text[], attribute_periods text[]
 ) language plpgsql as $$
 declare
@@ -315,7 +315,7 @@ begin
     with all_source_entities as (
         select TLB.graph_id, TLB.editable, 
         TLB.element_id, TLB.activity, TLB.traits, 
-        TLB.equivalence_class, TLB.equivalence_class_graph
+        TLB.equivalence_parent, TLB.equivalence_parent_graph
         from susers.transitive_load_base_elements_in_graph(p_user_login, p_id, p_period) TLB
         where TLB.element_type in (1,10)
     ), all_entities as (
@@ -333,8 +333,8 @@ begin
     ASE.element_id, 
     ASE.activity,
     ASE.traits,
-    ASE.equivalence_class,
-    ASE.equivalence_class_graph,
+    ASE.equivalence_parent,
+    ASE.equivalence_parent_graph,
     ALE.attribute_key, 
     ALE.attribute_values,
     ALE.attribute_periods
@@ -349,7 +349,7 @@ create or replace function susers.transitive_load_relations_in_graph(p_user_logi
 returns table (
     graph_id text, editable bool, 
     element_id text, activity text, traits text[], 
-    equivalence_class text[], equivalence_class_graph text[],
+    equivalence_parent text, equivalence_parent_graph text,
     role_in_relation text, role_values text[], role_periods text[]
 ) language plpgsql as $$
 declare
@@ -362,7 +362,7 @@ begin
     ), all_source_elements as (
         select TLB.graph_id, TLB.editable, 
         TLB.element_id, TLB.activity, TLB.traits, 
-        TLB.equivalence_class, TLB.equivalence_class_graph, 
+        TLB.equivalence_parent, TLB.equivalence_parent_graph, 
         TLB.element_type
         from susers.transitive_load_base_elements_in_graph(p_user_login, p_id, p_period) TLB
         where TLB.activity <> '];['
@@ -398,8 +398,8 @@ begin
     ASE.element_id, 
     ASE.activity,
     ASE.traits,
-    ASE.equivalence_class,
-    ASE.equivalence_class_graph,
+    ASE.equivalence_parent,
+    ASE.equivalence_parent_graph,
     VRV.role_in_relation, 
     VRV.role_values,
     VRV.role_periods

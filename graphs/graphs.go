@@ -10,14 +10,16 @@ import (
 
 // Node defines an element visible in the graph
 type Node struct {
-	// equivalenceClass defines the equivalent elements (key) and their source graph
-	EquivalenceClass map[string]string
 	// SourceGraph contains the source graph
 	SourceGraph string
 	// value is the actual displayed value
 	Value nodes.Element
 	// Editable is true if current user may modify the node
 	Editable bool
+	// EquivalenceParent defines the parent of current element, that is the element it was created from
+	EquivalenceParent string
+	// EquivalenceParentGraph is the graph of the equivalence parent
+	EquivalenceParentGraph string
 }
 
 // Graph defines a graph
@@ -89,8 +91,9 @@ func (g *Graph) MarkExistingElementAsDirty(currentElement nodes.Element) error {
 
 // AddToFormalInstance adds the instance if not exists already, or updates it
 func (g *Graph) AddToFormalInstance(
-	graphId string, editable bool, equivalenceClassByGaph map[string]string,
-	elementId string, traits []string, activity nodes.Period,
+	graphId string, editable bool,
+	elementId string, equivalenceParent string, equivalenceParentGraph string,
+	traits []string, activity nodes.Period,
 	attributeName string, attributeValues []string, attributePeriods []nodes.Period,
 ) error {
 	if g == nil {
@@ -98,9 +101,10 @@ func (g *Graph) AddToFormalInstance(
 	}
 
 	node := Node{
-		EquivalenceClass: equivalenceClassByGaph,
-		SourceGraph:      graphId,
-		Editable:         editable,
+		EquivalenceParent:      equivalenceParent,
+		EquivalenceParentGraph: equivalenceParentGraph,
+		SourceGraph:            graphId,
+		Editable:               editable,
 	}
 
 	var entity nodes.FormalInstance
@@ -133,8 +137,9 @@ func (g *Graph) AddToFormalInstance(
 
 // AddToFormalRelation adds the relation if not exists already, or updates it
 func (g *Graph) AddToFormalRelation(
-	graphId string, editable bool, equivalenceClassByGaph map[string]string,
-	elementId string, traits []string, activity nodes.Period,
+	graphId string, editable bool,
+	elementId string, equivalenceParent string, EquivalenceParentGraph string,
+	traits []string, activity nodes.Period,
 	roleName string, roleValue string, rolePeriod nodes.Period,
 ) error {
 	if g == nil {
@@ -142,9 +147,10 @@ func (g *Graph) AddToFormalRelation(
 	}
 
 	node := Node{
-		EquivalenceClass: equivalenceClassByGaph,
-		SourceGraph:      graphId,
-		Editable:         editable,
+		SourceGraph:            graphId,
+		Editable:               editable,
+		EquivalenceParent:      equivalenceParent,
+		EquivalenceParentGraph: EquivalenceParentGraph,
 	}
 
 	var relation nodes.FormalRelation
@@ -170,7 +176,7 @@ func (g *Graph) AddToFormalRelation(
 }
 
 // SetElement set values (overwrites a previous one if any) for a given element
-func (g *Graph) SetElement(currentElement nodes.Element, sourceGraph string, editable bool, equivalenceClassByGaph map[string]string) {
+func (g *Graph) SetElement(currentElement nodes.Element, sourceGraph string, editable bool, equivalenceParent, equivalenceParentGraph string) {
 	if g == nil || currentElement == nil {
 		return
 	}
@@ -182,35 +188,12 @@ func (g *Graph) SetElement(currentElement nodes.Element, sourceGraph string, edi
 	}
 
 	g.values[elementId] = Node{
-		EquivalenceClass: equivalenceClassByGaph,
-		SourceGraph:      sourceGraph,
-		Value:            currentElement,
-		Editable:         editable,
+		EquivalenceParent:      equivalenceParent,
+		EquivalenceParentGraph: equivalenceParentGraph,
+		SourceGraph:            sourceGraph,
+		Value:                  currentElement,
+		Editable:               editable,
 	}
-}
-
-// CreateNodeFrom adds the value in this graph from an existing one.
-// Typical use case is when a node comes from another graph (layer) but is changed to become a node in the new graph.
-func (g *Graph) CreateNodeFrom(newValue nodes.Element, source string) error {
-	if g == nil {
-		return nil
-	}
-
-	id := newValue.Id()
-	nodeValue, found := g.values[source]
-	if !found {
-		return errors.New("source node does not exist")
-	} else if source != id {
-		return errors.New("same id for source and new value")
-	}
-
-	nodeValue.SourceGraph = g.Id
-	nodeValue.Value = newValue
-	nodeValue.EquivalenceClass[id] = g.Id
-	delete(g.values, source)
-	g.values[id] = nodeValue
-	g.dirtyNodes = append(g.dirtyNodes, id)
-	return nil
 }
 
 // Nodes returns all the nodes in the graph
