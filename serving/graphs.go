@@ -170,6 +170,7 @@ func loadGraphSinceHandler(wrapper ServiceParameters, w http.ResponseWriter, r *
 	return nil
 }
 
+// loadGraphBetweenHandler gets two dates and loads data active during said time
 func loadGraphBetweenHandler(wrapper ServiceParameters, w http.ResponseWriter, r *http.Request) error {
 	defer r.Body.Close()
 

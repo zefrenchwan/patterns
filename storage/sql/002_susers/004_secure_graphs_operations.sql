@@ -273,14 +273,14 @@ begin
         join sgraphs.traits TRA on TRA.trait_id = ETR.trait_id 
         group by AEG.element_id
     ), all_accessible_equivalences as (
-        select NOD.source_element_id as element_id, 
-        array_agg(NOD.child_element_id order by AGR1.graph_id) as equivalence_class,
+        select NOD.child_element_id as element_id, 
+        array_agg(NOD.source_element_id order by AGR1.graph_id) as equivalence_class,
         array_agg(AGR1.graph_id order by AGR1.graph_id) as equivalence_class_graph
         from sgraphs.nodes NOD
         -- to ensure the source graph is visible. We take all source graphs, not only current
         join all_elements_in_graphs AGR1 on AGR1.element_id = NOD.source_element_id
         join all_elements_in_graphs AGR2 on AGR2.element_id = NOD.child_element_id
-        group by NOD.source_element_id
+        group by NOD.child_element_id
     )
     select 
     AIG.graph_id, 
