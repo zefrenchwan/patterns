@@ -105,7 +105,7 @@ alter table sgraphs.relation_role owner to upa;
 
 create table sgraphs.relation_role_values (
 	relation_role_id bigint not null references sgraphs.relation_role(relation_role_id) on delete cascade,
-	relation_value text not null references sgraphs.elements (element_id) on delete cascade,
+	relation_value text not null references sgraphs.elements(element_id) on delete cascade,
 	relation_period_id bigint references sgraphs.periods(period_id) on delete cascade
 ); 
 
