@@ -62,7 +62,8 @@ begin
     create temporary table if not exists temp_walkthroughs (
         walkthrough_id text, 
         element_id text,
-        element_operand text,
+		relation_role text,
+        relation_operand text,
         height int 
     );
 end; $$;
@@ -118,7 +119,7 @@ begin
 	), all_relations_to_delete as (
 		select distinct TWA.element_id 
 		from temp_walkthroughs TWA
-		left outer join all_valid_elements AVE on AVE.element_id = TWA.element_operand 
+		left outer join all_valid_elements AVE on AVE.element_id = TWA.relation_operand 
 		where AVE.element_id is null 
 	)
 	delete from temp_walkthroughs TWD
@@ -139,7 +140,8 @@ begin
 		-- pick relations having one operand in the cleaned base table 
 		-- AND that are not already inserted.
 		-- This step loads relations which childs are valid entities. Done once.  
-		select distinct RRO.relation_id, RRV.relation_value, RRV.relation_period_id as link_period 
+		select distinct RRO.relation_id, RRO.role_in_relation as relation_role, 
+		RRV.relation_value, RRV.relation_period_id as link_period 
 		from sgraphs.relation_role RRO
 		join sgraphs.relation_role_values RRV on RRV.relation_role_id = RRO.relation_role_id
 		join temp_walkthroughs TWA on TWA.element_id = RRV.relation_value -- operands are valid
@@ -153,7 +155,7 @@ begin
 		-- BUT WE WANT roles to be active, and relation to be active.  
 		-- We won't load recursively content of inactive data.
 		-- We also test that relation is visible.  
-		select  distinct ARC.relation_id, ARC.relation_value 
+		select  distinct ARC.relation_id, ARC.relation_role, ARC.relation_value 
 		from all_candidates_relations ARC
 		join sgraphs.elements ELT on ELT.element_id = ARC.relation_id 
 		join sgraphs.periods PERLINK on ARC.link_period = PERLINK.period_id 
@@ -163,7 +165,7 @@ begin
 		where not sgraphs.are_periods_disjoin(p_period, PER.period_value)
 		and not sgraphs.are_periods_disjoin(p_period, PERLINK.period_value)
 	), active_relations_with_visible_operands as (
-		select ARWO.relation_id, ARWO.relation_value  
+		select ARWO.relation_id, ARWO.relation_role, ARWO.relation_value  
 		from active_relations_with_operands ARWO 
 		where ARWO.relation_id not in (
 			-- find relations with at least one NON visible operand. 
@@ -175,14 +177,14 @@ begin
 			where AAGIN.graph_id is null 
 		)
 	), new_elements_to_insert as (
-		select EPR.relation_id, EPR.relation_value 
+		select EPR.relation_id, EPR.relation_role, EPR.relation_value 
 		from active_relations_with_visible_operands ARWVO 
 		join temp_walkthroughs TWA on TWA.element_id = ARWVO.relation_id
 		where TWA.element_id is null 
 		and TWA.walkthrough_id = p_walkthrough_id
 	)
-	insert into temp_walkthroughs(walkthrough_id,element_id,element_operand,height)
-	select p_walkthrough_id, NETI.relation_id, NETI.relation_value, 0 
+	insert into temp_walkthroughs(walkthrough_id,element_id, relation_role, relation_operand,height)
+	select p_walkthrough_id, NETI.relation_id, NETI.relation_role, NETI.relation_value, 0 
 	from new_elements_to_insert NETI;
 	-- force all hights to 0 for begining nodes
     update temp_walkthroughs
@@ -207,10 +209,10 @@ begin
 			where user_login = p_user_login
     	), all_relation_operands_starter as (
 			-- find childs that are relation, active, to load from 
-			select TW.element_operand
+			select TW.relation_operand
 			from temp_walkthroughs TW 
 			-- pick only relations
-			join sgraphs.relation_role RRO on RRO.relation_id = TW.element_operand
+			join sgraphs.relation_role RRO on RRO.relation_id = TW.relation_operand
 			join sgraphs.elements ELT on ELT.element_id = RRO.relation_id
 			-- find period for that relation  
 			join sgraphs.periods PER on PER.period_id = ELT.element_period 
@@ -220,13 +222,15 @@ begin
 			-- and are inserted last
 			and TW.height = l_max_previous_height
 		), all_active_candidates_relations as (
-			select AROS.element_operand as relation_id, RRV.relation_value
+			select AROS.relation_operand as relation_id, 
+			RRO.role_in_relation as relation_role, RRV.relation_value
 			from all_relation_operands_starter AROS 
-			join sgraphs.relation_role_value RRV on RRV.relation_role_id = AROS.element_operand
+			join sgraphs.relation_role RRO on AROS.relation_id = RRO.relation_id
+			join sgraphs.relation_role_value RRV on RRV.relation_role_id = RRO.relation_role_id
 			join sgraphs.periods PER on PER.period_id = RRV.relation_period_id 
 			where not sgraphs.are_periods_disjoin(p_period, PER.period_value)
 		), all_active_visible_relations as (
-			select AACR.relation_id, AACR.relation_value 
+			select AACR.relation_id, AACR.relation_role, AACR.relation_value 
 			from all_active_candidates_relations AACR
 			where AACR.relation_id not in (
 				select AACRIN.relation_id
@@ -237,14 +241,14 @@ begin
 			)
 		), new_visible_relations as (
 			-- from visible relations, get only relations that were not inserted
-			select AAVR.relation_id, AAVR.relation_value 
+			select AAVR.relation_id, AVR.relation_role, AAVR.relation_value 
 			from all_active_visible_relations AAVR 
 			left outer join temp_walkthroughs TW on TW.element = VRE.relation_id
 			where TW.relation_id is null 
 			and TW.walkthrough_id = p_walkthrough_id
 		)
-		insert into temp_walkthroughs(walkthrough_id,element_id,element_operand,height)
-		select p_walkthrough_id, NVIR.relation_id, NVIR.relation_value, l_current_height 
+		insert into temp_walkthroughs(walkthrough_id,element_id,relation_role, relation_operand,height)
+		select p_walkthrough_id, NVIR.relation_id, NVIR.relation_role, NVIR.relation_value, l_current_height 
 		from new_visible_relations NVIR; 
 	end loop;
 
