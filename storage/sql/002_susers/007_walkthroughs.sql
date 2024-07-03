@@ -56,7 +56,8 @@ declare
 begin 
 	create temporary table if not exists temp_authorized_graphs (
         walkthrough_id text, 
-		graph_id text
+		graph_id text,
+		editable bool
     );
 
     create temporary table if not exists temp_walkthroughs (
@@ -95,7 +96,7 @@ begin
 	l_current_height = 0;
 
 	insert into temp_authorized_graphs(walkthrough_id, graph_id)
-	select p_walkthrough_id, AAG.graph_id
+	select p_walkthrough_id, AAG.graph_id, AAG.editable
 	from susers.authorized_graphs AAG 
 	join susers.users USR on USR.user_id = AAG.auth_user_id 
 	where user_login = p_user_login;
@@ -255,3 +256,30 @@ begin
 end; $$;
 
 alter procedure susers.find_neighbors_for_walkthrough owner to upa;
+
+
+create or replace function susers.load_relations_from_walkthrough(p_walkthrough_id text)
+returns table (
+    graph_id text, editable bool, 
+    element_id text, activity text, traits text[], 
+    equivalence_parent text, equivalence_parent_graph text,
+    role_in_relation text, role_values text[], role_periods text[]
+) language plpgsql as $$
+declare 
+
+begin 
+
+end; $$;
+
+create or replace function susers.load_entities_from_walkthrough(p_walkthrough_id text)
+returns table (
+    graph_id text, editable bool, 
+    element_id text, activity text, traits text[], 
+    equivalence_parent text, equivalence_parent_graph text,
+    attribute_key text, attribute_values text[], attribute_periods text[]
+) language plpgsql as $$
+declare 
+
+begin 
+
+end; $$;
