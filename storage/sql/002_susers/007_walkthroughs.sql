@@ -204,10 +204,9 @@ begin
 		select l_current_height + 1 into  l_current_height ;
 
 		with all_authorized_graphs as (
-			select AAG.graph_id
-			from susers.authorized_graphs AAG 
-			join susers.users USR on USR.user_id = AAG.auth_user_id 
-			where user_login = p_user_login
+			select TAG.graph_id
+			from temp_authorized_graphs TAG
+			where walkthrough_id = p_walkthrough_id
     	), all_relation_operands_starter as (
 			-- find childs that are relation, active, to load from 
 			select TW.relation_operand
@@ -227,7 +226,7 @@ begin
 			RRO.role_in_relation as relation_role, RRV.relation_value
 			from all_relation_operands_starter AROS 
 			join sgraphs.relation_role RRO on AROS.relation_id = RRO.relation_id
-			join sgraphs.relation_role_value RRV on RRV.relation_role_id = RRO.relation_role_id
+			join sgraphs.relation_role_values RRV on RRV.relation_role_id = RRO.relation_role_id
 			join sgraphs.periods PER on PER.period_id = RRV.relation_period_id 
 			where not sgraphs.are_periods_disjoin(p_period, PER.period_value)
 		), all_active_visible_relations as (
@@ -265,21 +264,157 @@ returns table (
     equivalence_parent text, equivalence_parent_graph text,
     role_in_relation text, role_values text[], role_periods text[]
 ) language plpgsql as $$
-declare 
-
 begin 
-
+	with all_authorized_graphs as (
+        select TAG.graph_id, TAG.editable 
+        from temp_authorized_graphs TAG
+		where walkthrough_id = p_walkthrough_id
+    ), all_visible_relations as (
+		select ELT.element_id, ELT.graph_id, AAG.editable, ELT.element_period as period_id
+		from temp_walkthroughs TWA
+		join sgraphs.elements ELT on ELT.element_id = TWA.element_id
+		join all_authorized_graphs AAG on AAG.graph_id = ELT.graph_id
+		where TWA.walkthrough_id = p_walkthrough_id
+		and ELT.element_type in (2,10)
+		UNION
+		select TWA.relation_operand as element_id, 
+		ELT.graph_id, AAG.editable, ELT.element_period as period_id
+		from temp_walkthroughs TWA
+		join sgraphs.elements ELT on ELT.element_id = TWA.relation_operand
+		join all_authorized_graphs AAG on AAG.graph_id = ELT.graph_id
+		where TWA.walkthrough_id = p_walkthrough_id
+		and ELT.element_type in (2,10)
+	), all_relations_main_data as (
+		select AVR.element_id, AVR.graph_id, AVR.editable, 
+		PER.period_value, 
+		not susers.are_periods_disjoin(p_period_value, PER.period_value) is_active 
+		from all_visible_relations AVR 
+		join sgraphs.periods PER on AVR.period_id = PER.period_id
+	), all_relations_traits as (
+		select ARMD.element_id, array_agg(distinct TRA.trait) as traits 
+		from all_relations_main_data ARMD 
+		join sgraphs.element_trait ETR on ETR.element_id = ARMD.element_id 
+		join sgraphs.traits TRA on TRA.trait_id = ETR.trait_id 
+		group by ARMD.element_id
+	),  all_equivalences as (
+		select ARMD.element_id, 
+		ELTS.element_id as equivalence_parent,
+		AAG.graph_id as equivalence_parent_graph 
+		from all_relations_main_data ARMD
+		join sgraphs.nodes NOD on NOD.child_element_id = ARMD.element_id 
+		join sgraphs.elements ELTS on ELTS.element_id = NOD.source_element_id 
+		join all_authorized_graphs AAG on AAG.graph_id = ELTS.graph_id 
+	), all_relation_roles_from_walkthrough as (
+		select ELT.element_id, TWA.relation_role, TWA.relation_operand
+		from temp_walkthroughs TWA
+		join sgraphs.elements ELT on ELT.element_id = TWA.element_id
+		join all_authorized_graphs AAG on AAG.graph_id = ELT.graph_id
+		where TWA.walkthrough_id = p_walkthrough_id
+		and ELT.element_type in (2,10)
+		and TWA.relation_role is not null 
+	), all_relations_values as (
+		select AARFW.element_id, 
+		RRV.role_in_relation, 
+		array_agg(RRV.relation_value order by RRV.relation_period_id) as role_values, 
+		array_agg(PER.period_value) as role_periods
+		from all_relation_roles_from_walkthrough ARRFW 
+		join sgraphs.relation_role RRO on RRO.relation_id = ARRFW.relation_id
+		join sgraphs.relation_role_values RRV on RRV.relation_role_id = RRO.relation_role_id
+		join sgraphs.periods PER on PER.period_id = RRV.relation_period_id 
+		where ARRFW.relation_role = RRO.role_in_relation
+		and ARRFW.relation_value = RRV.relation_value
+		group by AARFW.element_id, RRV.role_in_relation 
+	)
+	select 
+	ARMD.graph_id, ARMD.editable, 
+    ARMD.element_id, ARMD.activity, ART.traits, 
+    AEQ.equivalence_parent , AEQ.equivalence_parent_graph ,
+    ARV.role_in_relation , ARV.role_values , ARV.role_periods 
+	from all_relations_main_data ARMD 
+	left outer join all_relations_traits ART on ART.element_id = ARMD.element_id
+	left outer join all_equivalences AEQ on AEQ.element_id = ARMD.element_id 
+	left outer join all_relations_values ARV on ARV.element_id = ARMD.element_id ;
 end; $$;
 
-create or replace function susers.load_entities_from_walkthrough(p_walkthrough_id text)
+alter function susers.load_relations_from_walkthrough owner to upa;
+
+create or replace function susers.load_entities_from_walkthrough(p_walkthrough_id text, p_period_value text)
 returns table (
     graph_id text, editable bool, 
     element_id text, activity text, traits text[], 
     equivalence_parent text, equivalence_parent_graph text,
     attribute_key text, attribute_values text[], attribute_periods text[]
 ) language plpgsql as $$
-declare 
-
-begin 
-
+begin
+	return query 
+	with all_authorized_graphs as (
+        select TAG.graph_id, TAG.editable 
+        from temp_authorized_graphs TAG
+		where walkthrough_id = p_walkthrough_id
+    ), all_visible_entities as (
+		select ELT.element_id, ELT.graph_id, AAG.editable, ELT.element_period as period_id
+		from temp_walkthroughs TWA
+		join sgraphs.elements ELT on ELT.element_id = TWA.element_id
+		join all_authorized_graphs AAG on AAG.graph_id = ELT.graph_id
+		where TWA.walkthrough_id = p_walkthrough_id
+		and ELT.element_type in (1,10)
+		UNION
+		select TWA.relation_operand as element_id, 
+		ELT.graph_id, AAG.editable, ELT.element_period as period_id
+		from temp_walkthroughs TWA
+		join sgraphs.elements ELT on ELT.element_id = TWA.relation_operand
+		join all_authorized_graphs AAG on AAG.graph_id = ELT.graph_id
+		where TWA.walkthrough_id = p_walkthrough_id
+		and ELT.element_type in (1,10)
+	), all_entities_main_data as (
+		select AVE.element_id, AVE.graph_id, AVE.editable, 
+		PER.period_value, 
+		not susers.are_periods_disjoin(p_period_value, PER.period_value) is_active 
+		from all_visible_entities AVE 
+		join sgraphs.periods PER on AVE.period_id = PER.period_id
+	), all_entities_traits as (
+		select AEMD.element_id, array_agg(distinct TRA.trait) as traits 
+		from all_entities_main_data AEMD 
+		join sgraphs.element_trait ETR on ETR.element_id = AEMD.element_id 
+		join sgraphs.traits TRA on TRA.trait_id = ETR.trait_id 
+		group by AEMD.element_id
+	), all_entities_attributes as (
+		select AEMD.element_id, EAT.attribute_name, 
+		array_agg(EAT.attribute_value order by attribute_id) as attribute_values, 
+		array_agg(PER.period_value order by attribute_id) as attribute_periods
+		from all_entities_main_data AEMD
+		join susers.entity_attributes EAT on EAT.entity_id = AEMD.element_id 
+		join susers.periods PER on PER.period_id = EAT.period_id 
+		where (
+			-- either entity is not active and load it all (X loves socrate)
+			-- or entity is active and load only relevant data 
+			not AEMD.is_active or susers.are_periods_disjoin(PER.period_value, p_period_value)
+		)
+		group by AEMD.element_id, EAT.attribute_name
+	), all_equivalences as (
+		select AEMD.element_id, 
+		ELTS.element_id as equivalence_parent,
+		AAG.graph_id as equivalence_parent_graph 
+		from all_entities_main_data AEMD
+		join sgraphs.nodes NOD on NOD.child_element_id = AEMD.element_id 
+		join sgraphs.elements ELTS on ELTS.element_id = NOD.source_element_id 
+		join all_authorized_graphs AAG on AAG.graph_id = ELTS.graph_id 
+	)
+	select
+	AEMD.graph_id, 
+	AEMD.editable, 
+	AEMD.element_id, 
+	AEMD.period_value as activity,
+	AET.traits, 
+	AEQ.equivalence_parent, 
+	AEQ.equivalence_parent_graph,
+    AEA.attribute_key, 
+	AEA.attribute_values, 
+	AEA.attribute_periods 
+	from all_entities_main_data AEMD 
+	left outer join all_entities_traits AET on AET.element_id = AEMD.element_id 
+	left outer join all_entities_attributes AEA on AEA.element_id = AEMD.element_id 
+	left outer join all_equivalences AEQ on AEQ.element_id = AEMD.element_id;
 end; $$;
+
+alter function susers.load_entities_from_walkthrough owner to upa;
