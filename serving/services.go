@@ -58,8 +58,12 @@ func InitService(dao storage.Dao, initialContext context.Context, logger *zap.Su
 	AddAuthenticatedGetServiceHandlerToMux(mux, "/elements/load/{elementId}/", loadElementByIdHandler, parameters)
 	AddAuthenticatedPostServiceHandlerToMux(mux, "/elements/upsert/graph/{graphId}/", upsertElementInGraphHandler, parameters)
 	AddAuthenticatedGetServiceHandlerToMux(mux, "/elements/delete/{elementId}/", deleteElementHandler, parameters)
+	// LOCAL FIND OPERATIONS
+	AddAuthenticatedGetServiceHandlerToMux(mux, "/find/neighbors/of/entities/for/trait/{trait}/", findElementFullPeriodHandler, parameters)
+	AddAuthenticatedGetServiceHandlerToMux(mux, "/find/neighbors/of/entities/for/trait/{trait}/since/{start}/", findElementSinceHandler, parameters)
+	AddAuthenticatedGetServiceHandlerToMux(mux, "/find/neighbors/of/entities/for/trait/{trait}/until/{end}/", findElementUntilHandler, parameters)
+	AddAuthenticatedGetServiceHandlerToMux(mux, "/find/neighbors/of/entities/for/trait/{trait}/between/{start}/and/{end}/", findElementBetweenHandler, parameters)
 	// END OF HANDLERS MODIFICATION
-
 	// mux is complete, all handlers are set
 	return mux
 }
@@ -86,7 +90,7 @@ func AddAuthenticatedPostServiceHandlerToMux(mux *http.ServeMux, urlPattern stri
 
 // AddServiceHandlerToMux adds an handler to current mux
 func AddServiceHandlerToMux(mux *http.ServeMux, method string, urlPattern string, testAuth bool, handler ServiceHandler, parameters ServiceParameters) {
-	mux.HandleFunc(urlPattern, func(w http.ResponseWriter, r *http.Request) {
+	handlerFunction := func(w http.ResponseWriter, r *http.Request) {
 		if !strings.EqualFold(r.Method, method) {
 			http.Error(w, "Expecting "+method, http.StatusBadRequest)
 			return
@@ -115,7 +119,17 @@ func AddServiceHandlerToMux(mux *http.ServeMux, method string, urlPattern string
 				http.Error(w, "Internal error: "+errHandler.Error(), http.StatusInternalServerError)
 			}
 		}
-	})
+	}
+
+	// register url matching
+	mux.HandleFunc(urlPattern, handlerFunction)
+	// deal with /value/ <=> /value
+	size := len(urlPattern)
+	if strings.HasSuffix(urlPattern, "/") {
+		mux.HandleFunc(urlPattern[0:size-1], handlerFunction)
+	} else {
+		mux.HandleFunc(urlPattern+"/", handlerFunction)
+	}
 }
 
 // ServiceParameters contains all parameters to use for a service

@@ -530,185 +530,105 @@ func (d *Dao) LoadGraphForUserDuringPeriod(ctx context.Context, user string, gra
 	// globalErr is nil, proceed to entities
 	// STEP TWO: ENTITIES
 	const queryEntities = "select * from susers.transitive_load_entities_in_graph($1, $2, $3) order by element_id, attribute_key asc"
-	rowsEntities, errEntities := d.pool.Query(ctx, queryEntities, user, graphId, periodValue)
+	rowsEntities, errRowsEntities := d.pool.Query(ctx, queryEntities, user, graphId, periodValue)
+	if errRowsEntities != nil {
+		return empty, errRowsEntities
+	}
+
+	errEntities := completeGraphWithEntitiesRows(rowsEntities, &result)
 	if errEntities != nil {
 		return empty, errEntities
-	}
-
-	for rowsEntities.Next() {
-		// read data from current line
-		var rawEntityAttr []any
-		if rawLine, errAttr := rowsEntities.Values(); errAttr != nil {
-			globalErr = errors.Join(globalErr, errAttr)
-			continue
-		} else {
-			rawEntityAttr = rawLine
-		}
-
-		currentGraphId := rawEntityAttr[0].(string)
-		currentGraphEditable := rawEntityAttr[1].(bool)
-		elementId := rawEntityAttr[2].(string)
-		activity := nodes.NewEmptyPeriod()
-		if rawEntityAttr[3] != nil {
-			if a, err := deserializePeriod(rawEntityAttr[3].(string)); err != nil {
-				globalErr = errors.Join(globalErr, err)
-				continue
-			} else if a.IsEmptyPeriod() {
-				globalErr = errors.Join(globalErr, errors.New("empty period for element"))
-				continue
-			} else {
-				activity = a
-			}
-		}
-
-		var traits []string
-		if rawEntityAttr[4] != nil {
-			traits = mapAnyToStringSlice(rawEntityAttr[4])
-		}
-
-		var equivalenceParent string
-		var equivalenceParentGraph string
-		if rawEntityAttr[5] != nil {
-			equivalenceParent = rawEntityAttr[5].(string)
-		}
-
-		if rawEntityAttr[6] != nil {
-			equivalenceParentGraph = rawEntityAttr[6].(string)
-		}
-
-		var attributeKey string
-		var attributeValues []string
-		var attributePeriodValues []string
-		if rawEntityAttr[7] != nil {
-			attributeKey = rawEntityAttr[7].(string)
-		}
-
-		if rawEntityAttr[8] != nil {
-			attributeValues = mapAnyToStringSlice(rawEntityAttr[8])
-		}
-
-		if rawEntityAttr[9] != nil {
-			attributePeriodValues = mapAnyToStringSlice(rawEntityAttr[9])
-		}
-
-		periodsError := false
-		sizePeriodValues := len(attributePeriodValues)
-		attributePeriods := make([]nodes.Period, sizePeriodValues)
-		for index, periodValue := range attributePeriodValues {
-			if newPeriod, err := deserializePeriod(periodValue); err != nil {
-				globalErr = errors.Join(globalErr, err)
-				periodsError = true
-			} else {
-				attributePeriods[index] = newPeriod
-			}
-		}
-
-		if periodsError {
-			continue
-		}
-
-		result.AddToFormalInstance(currentGraphId, currentGraphEditable,
-			elementId, equivalenceParent, equivalenceParentGraph,
-			traits, activity, attributeKey, attributeValues, attributePeriods,
-		)
-	}
-
-	if globalErr != nil {
-		return empty, globalErr
 	}
 
 	// globalErr is nil, proceed to relations
 	// STEP THREE: RELATIONS
 	const queryRelations = "select * from susers.transitive_load_relations_in_graph($1, $2, $3) order by element_id asc"
-	rowsRelation, errRelation := d.pool.Query(ctx, queryRelations, user, graphId, periodValue)
+	rowsRelations, errRowsRelations := d.pool.Query(ctx, queryRelations, user, graphId, periodValue)
+	if errRowsRelations != nil {
+		return empty, errRowsRelations
+	}
+
+	errRelation := completeGraphWithRelationsRows(rowsRelations, &result)
 	if errRelation != nil {
 		return empty, errRelation
 	}
 
-	for rowsRelation.Next() {
-		// read data from current line
-		var rawRelation []any
-		if rawLine, errAttr := rowsRelation.Values(); errAttr != nil {
-			globalErr = errors.Join(globalErr, errAttr)
-			continue
-		} else {
-			rawRelation = rawLine
-		}
+	return result, nil
+}
 
-		currentGraphId := rawRelation[0].(string)
-		currentGraphEditable := rawRelation[1].(bool)
-		elementId := rawRelation[2].(string)
-		activity := nodes.NewEmptyPeriod()
-		if rawRelation[3] != nil {
-			if a, err := deserializePeriod(rawRelation[3].(string)); err != nil {
-				globalErr = errors.Join(globalErr, err)
-				continue
-			} else if a.IsEmptyPeriod() {
-				globalErr = errors.Join(globalErr, errors.New("empty period for element"))
-				continue
-			} else {
-				activity = a
-			}
-		}
-
-		var traits []string
-		if rawRelation[4] != nil {
-			traits = mapAnyToStringSlice(rawRelation[4])
-		}
-
-		var equivalenceParent string
-		var equivalenceParentGraph string
-		if rawRelation[5] != nil {
-			equivalenceParent = rawRelation[5].(string)
-		}
-
-		if rawRelation[6] != nil {
-			equivalenceParentGraph = rawRelation[6].(string)
-		}
-
-		var roleName string
-		var roleValues []string
-		var rolePeriods []string
-
-		if rawRelation[7] != nil {
-			roleName = rawRelation[7].(string)
-		}
-
-		if rawRelation[8] != nil {
-			roleValues = mapAnyToStringSlice(rawRelation[8])
-		}
-
-		if len(roleValues) == 0 {
-			globalErr = errors.Join(globalErr, errors.New("no value for a role in relation"))
-			continue
-		}
-
-		if rawRelation[9] != nil {
-			rolePeriods = mapAnyToStringSlice(rawRelation[9])
-		}
-
-		if len(rolePeriods) == 0 {
-			globalErr = errors.Join(globalErr, errors.New("no value for a role in relation"))
-			continue
-		} else if len(rolePeriods) != len(roleValues) {
-			globalErr = errors.Join(globalErr, errors.New("relation values and periods mismatch"))
-			continue
-		}
-
-		for index := 0; index < len(roleValues); index++ {
-			switch rolePeriod, errPeriod := deserializePeriod(rolePeriods[index]); errPeriod {
-			case nil:
-				result.AddToFormalRelation(currentGraphId, currentGraphEditable,
-					elementId, equivalenceParent, equivalenceParentGraph,
-					traits, activity, roleName, roleValues[index], rolePeriod)
-			default:
-				globalErr = errors.Join(globalErr, errPeriod)
-			}
-		}
+// FindNeighborsOfMatchingElements
+func (d *Dao) FindNeighborsOfMatchingElements(ctx context.Context, user string, period nodes.Period, trait string, parameters map[string]string) (graphs.Graph, error) {
+	var empty graphs.Graph
+	if d == nil || d.pool == nil {
+		return empty, errors.New("nil value")
 	}
 
-	if globalErr != nil {
+	result := graphs.NewEmptyGraph()
+	newId := uuid.NewString()
+	result.Id = "virtual: " + newId
+	result.Name = "result of query " + newId
+
+	tx, errTx := d.pool.Begin(ctx)
+	if errTx != nil {
+		return empty, errTx
+	}
+
+	var globalErr error
+	periodStr := serializePeriod(period)
+	keys := make([]string, 0)
+	values := make([]string, 0)
+	for k, v := range parameters {
+		keys = append(keys, k)
+		values = append(values, v)
+	}
+
+	_, errExplore := tx.Exec(ctx, "call susers.find_neighbors_of_matching_entities($1, $2, $3, $4, $5, $6)", user, newId, periodStr, trait, keys, values)
+	if errExplore != nil {
+		if err := tx.Rollback(ctx); err != nil {
+			globalErr = errors.Join(errExplore, err)
+		}
+
 		return empty, globalErr
+	}
+
+	// walkthrough done, load content
+	const queryEntities = "select * from susers.load_entities_from_walkthrough($1, $2)"
+	rowsEntities, errLoadEntities := tx.Query(ctx, queryEntities, newId, periodStr)
+	if errLoadEntities != nil {
+		globalErr = errors.Join(globalErr, errLoadEntities)
+		if err := tx.Rollback(ctx); err != nil {
+			globalErr = errors.Join(globalErr, err)
+		}
+
+		return empty, globalErr
+	} else if errEntities := completeGraphWithEntitiesRows(rowsEntities, &result); errEntities != nil {
+		globalErr = errors.Join(globalErr, errEntities)
+		if err := tx.Rollback(ctx); err != nil {
+			globalErr = errors.Join(globalErr, err)
+		}
+
+		return empty, globalErr
+	}
+
+	const queryRelations = "select * from susers.load_relations_from_walkthrough($1) "
+	if rowsRelation, errLoadRelation := tx.Query(ctx, queryRelations, newId); errLoadRelation != nil {
+		globalErr = errors.Join(globalErr, errLoadRelation)
+		if err := tx.Rollback(ctx); err != nil {
+			globalErr = errors.Join(globalErr, err)
+		}
+
+		return empty, globalErr
+	} else if errRelation := completeGraphWithRelationsRows(rowsRelation, &result); errRelation != nil {
+		globalErr = errors.Join(globalErr, errRelation)
+		if err := tx.Rollback(ctx); err != nil {
+			globalErr = errors.Join(globalErr, err)
+		}
+
+		return empty, globalErr
+	}
+
+	if _, err := tx.Exec(ctx, "call susers.delete_values_for_walkthrough($1)", newId); err != nil {
+		return result, err
 	}
 
 	return result, nil

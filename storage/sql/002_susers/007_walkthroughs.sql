@@ -71,6 +71,22 @@ end; $$;
 
 alter procedure susers.init_walkthrough_structures owner to upa;
 
+-- susers.init_walkthrough fills initial content for that user and that walkthrough
+create or replace procedure susers.init_walkthrough(p_walkthrough_id text, p_user_login text)
+language plpgsql as $$
+begin 
+	delete from temp_authorized_graphs
+	where walkthrough_id = p_walkthrough_id;
+
+	insert into temp_authorized_graphs(walkthrough_id, graph_id, editable)
+	select p_walkthrough_id, AAG.graph_id, AAG.editable
+	from susers.authorized_graphs AAG 
+	join susers.users USR on USR.user_id = AAG.auth_user_id 
+	where user_login = p_user_login;
+end;$$;
+
+alter procedure susers.init_walkthrough owner to upa;
+
 
 -- susers.delete_values_for_walkthrough deletes values for a given walkthrough. 
 -- It assumes table temp_walkthroughs exists
@@ -94,12 +110,6 @@ declare
 begin 
 	-- first hight is 0
 	l_current_height = 0;
-
-	insert into temp_authorized_graphs(walkthrough_id, graph_id)
-	select p_walkthrough_id, AAG.graph_id, AAG.editable
-	from susers.authorized_graphs AAG 
-	join susers.users USR on USR.user_id = AAG.auth_user_id 
-	where user_login = p_user_login;
 
 	-- delete elements that are NOT visible from said user. 
 	-- We keep inactive elements, for user to deal with it. 
@@ -126,7 +136,7 @@ begin
 	delete from temp_walkthroughs TWD
 	where TWD.element_id in (
 		select AED.element_id 
-		from all_entities_to_delete
+		from all_entities_to_delete AED
 		UNION ALL 
 		select ARD.element_id 
 		from all_relations_to_delete ARD 
@@ -146,10 +156,9 @@ begin
 		from sgraphs.relation_role RRO
 		join sgraphs.relation_role_values RRV on RRV.relation_role_id = RRO.relation_role_id
 		join temp_walkthroughs TWA on TWA.element_id = RRV.relation_value -- operands are valid
-		left outer join temp_walkthroughs EXTWA on EXTWA.element_id = RRO.relation_id
+		left outer join temp_walkthroughs EXTWA on EXTWA.element_id = RRO.relation_id and EXTWA.walkthrough_id = TWA.walkthrough_id 
 		where EXTWA.element_id is null  -- to find new elements, not already inserted   
 		and TWA.walkthrough_id = p_walkthrough_id
-		and EXTWA.walkthrough_id = p_walkthrough_id
 	), active_relations_with_operands as (
 		-- We do: 
 		-- NOT ask for operands to be active (for instance, X is the son of Y, and Y may not be active)
@@ -174,15 +183,15 @@ begin
 			select ARWOIN.relation_id
 			from active_relations_with_operands ARWOIN
 			join sgraphs.elements ELTIN on ELTIN.element_id = ARWOIN.relation_value
-			left outer join all_authorized_graphs AAGIN on AAG.graph_id = ELTIN.graph_id 
+			left outer join all_authorized_graphs AAGIN on AAGIN.graph_id = ELTIN.graph_id 
 			where AAGIN.graph_id is null 
 		)
 	), new_elements_to_insert as (
-		select EPR.relation_id, EPR.relation_role, EPR.relation_value 
+		select ARWVO.relation_id, ARWVO.relation_role, ARWVO.relation_value 
 		from active_relations_with_visible_operands ARWVO 
-		join temp_walkthroughs TWA on TWA.element_id = ARWVO.relation_id
-		where TWA.element_id is null 
+		left outer join temp_walkthroughs TWA on TWA.element_id = ARWVO.relation_id
 		and TWA.walkthrough_id = p_walkthrough_id
+		where TWA.element_id is null 
 	)
 	insert into temp_walkthroughs(walkthrough_id,element_id, relation_role, relation_operand,height)
 	select p_walkthrough_id, NETI.relation_id, NETI.relation_role, NETI.relation_value, 0 
@@ -225,7 +234,7 @@ begin
 			select AROS.relation_operand as relation_id, 
 			RRO.role_in_relation as relation_role, RRV.relation_value
 			from all_relation_operands_starter AROS 
-			join sgraphs.relation_role RRO on AROS.relation_id = RRO.relation_id
+			join sgraphs.relation_role RRO on AROS.relation_operand = RRO.relation_id
 			join sgraphs.relation_role_values RRV on RRV.relation_role_id = RRO.relation_role_id
 			join sgraphs.periods PER on PER.period_id = RRV.relation_period_id 
 			where not sgraphs.are_periods_disjoin(p_period, PER.period_value)
@@ -241,10 +250,10 @@ begin
 			)
 		), new_visible_relations as (
 			-- from visible relations, get only relations that were not inserted
-			select AAVR.relation_id, AVR.relation_role, AAVR.relation_value 
+			select AAVR.relation_id, AAVR.relation_role, AAVR.relation_value 
 			from all_active_visible_relations AAVR 
-			left outer join temp_walkthroughs TW on TW.element = VRE.relation_id
-			where TW.relation_id is null 
+			left outer join temp_walkthroughs TW on TW.element_id = AAVR.relation_id
+			where TW.element_id is null 
 			and TW.walkthrough_id = p_walkthrough_id
 		)
 		insert into temp_walkthroughs(walkthrough_id,element_id,relation_role, relation_operand,height)
@@ -287,7 +296,7 @@ begin
 	), all_relations_main_data as (
 		select AVR.element_id, AVR.graph_id, AVR.editable, 
 		PER.period_value, 
-		not susers.are_periods_disjoin(p_period_value, PER.period_value) is_active 
+		not sgraphs.are_periods_disjoin(p_period_value, PER.period_value) is_active 
 		from all_visible_relations AVR 
 		join sgraphs.periods PER on AVR.period_id = PER.period_id
 	), all_relations_traits as (
@@ -369,7 +378,7 @@ begin
 	), all_entities_main_data as (
 		select AVE.element_id, AVE.graph_id, AVE.editable, 
 		PER.period_value, 
-		not susers.are_periods_disjoin(p_period_value, PER.period_value) is_active 
+		not sgraphs.are_periods_disjoin(p_period_value, PER.period_value) is_active 
 		from all_visible_entities AVE 
 		join sgraphs.periods PER on AVE.period_id = PER.period_id
 	), all_entities_traits as (
@@ -388,7 +397,7 @@ begin
 		where (
 			-- either entity is not active and load it all (X loves socrate)
 			-- or entity is active and load only relevant data 
-			not AEMD.is_active or susers.are_periods_disjoin(PER.period_value, p_period_value)
+			not AEMD.is_active or sgraphs.are_periods_disjoin(PER.period_value, p_period_value)
 		)
 		group by AEMD.element_id, EAT.attribute_name
 	), all_equivalences as (
@@ -418,3 +427,78 @@ begin
 end; $$;
 
 alter function susers.load_entities_from_walkthrough owner to upa;
+
+
+create or replace procedure susers.find_neighbors_of_matching_entities(p_user_login text, p_walkthrough_id text, p_period text, p_matching_trait text, p_attributes text[], p_values text[])
+language plpgsql as $$
+declare 
+	l_walkthrough_id text;
+begin 
+	-- init structures 
+	call susers.init_walkthrough_structures();
+	call susers.init_walkthrough(p_walkthrough_id, p_user_login);
+
+	-- find elements and insert them into the walkthrough table
+	if p_attributes is null or array_length (p_attributes, 1) = 0 then 
+		with all_authorized_graphs as (
+			select TAG.graph_id, TAG.editable 
+			from temp_authorized_graphs TAG
+			where walkthrough_id = p_walkthrough_id
+		), matching_traits_elements as (
+			select distinct ELT.element_id
+			from sgraphs.elements ELT
+			join sgraphs.periods PER on PER.period_id = ELT.element_period 
+			join all_authorized_graphs AAG on ELT.graph_id = AAG.graph_id 
+			join sgraphs.element_trait ETR on ETR.element_id = ELT.element_id 
+			join sgraphs.traits TRA on TRA.trait_id = ETR.trait_id 
+			where TRA.trait = p_matching_trait
+			and not sgraphs.are_periods_disjoin(p_period, PER.period_value)
+			and ELT.element_type in (1,10)
+		)
+		insert into  temp_walkthroughs(walkthrough_id,element_id,relation_role,relation_operand,height)
+		select p_walkthrough_id, MTE.element_id, null, null, 0
+		from matching_traits_elements MTE;
+	else  
+		with all_authorized_graphs as (
+			select TAG.graph_id, TAG.editable 
+			from temp_authorized_graphs TAG
+			where walkthrough_id = p_walkthrough_id
+		), matching_traits_elements as (
+			select distinct ELT.element_id
+			from sgraphs.elements ELT
+			join sgraphs.periods PER on PER.period_id = ELT.element_period 
+			join all_authorized_graphs AAG on ELT.graph_id = AAG.graph_id 
+			join sgraphs.element_trait ETR on ETR.element_id = ELT.element_id 
+			join sgraphs.traits TRA on TRA.trait_id = ETR.trait_id 
+			where TRA.trait = p_matching_trait
+			and not sgraphs.are_periods_disjoin(p_period, PER.period_value)
+			and ELT.element_type in (1,10)
+		), param_attributes as (
+			select unnest(p_attributes) as attr_key, unnest(p_values) as attr_value 
+		), matching_values as (
+			select MTE.element_id, 
+			array_agg(distinct ETA.attribute_name) as attribute_keys, 
+			array_agg(ETA.attribute_value) as attribute_values 
+			from matching_traits_elements MTE
+			join sgraphs.entity_attributes ETA on ETA.entity_id = MTE.element_id 
+			join param_attributes PAT on PAT.attr_key = ETA.attribute_name
+			and PAT.attr_value = ETA.attribute_value  
+			join sgraphs.periods PER on PER.period_id = ETA.period_id
+			where not sgraphs.are_periods_disjoin(p_period, PER.period_value)
+			group by MTE.element_id 
+			having count(*) = array_length(p_values, 1)
+		), matching_entities as (
+			select MV.element_id 
+			from matching_values MV
+			where p_attributes <@ attribute_keys
+			and p_values <@ attribute_values 
+		)
+		insert into  temp_walkthroughs(walkthrough_id,element_id,relation_role,relation_operand,height)
+		select p_walkthrough_id, ME.element_id, null, null, 0
+		from matching_entities ME;
+	end if;
+
+	call susers.find_neighbors_for_walkthrough(p_user_login, p_walkthrough_id, p_period);
+end;$$;
+
+alter procedure susers.find_neighbors_of_matching_entities owner to upa;
