@@ -556,8 +556,8 @@ func (d *Dao) LoadGraphForUserDuringPeriod(ctx context.Context, user string, gra
 	return result, nil
 }
 
-// FindNeighborsOfMatchingElements
-func (d *Dao) FindNeighborsOfMatchingElements(ctx context.Context, user string, period nodes.Period, trait string, parameters map[string]string) (graphs.Graph, error) {
+// FindNeighborsOfMatchingEntities
+func (d *Dao) FindNeighborsOfMatchingEntities(ctx context.Context, user string, period nodes.Period, trait string, parameters map[string]string) (graphs.Graph, error) {
 	var empty graphs.Graph
 	if d == nil || d.pool == nil {
 		return empty, errors.New("nil value")
@@ -568,70 +568,50 @@ func (d *Dao) FindNeighborsOfMatchingElements(ctx context.Context, user string, 
 	result.Id = "virtual: " + newId
 	result.Name = "result of query " + newId
 
-	tx, errTx := d.pool.Begin(ctx)
-	if errTx != nil {
-		return empty, errTx
-	}
-
 	var globalErr error
 	periodStr := serializePeriod(period)
-	keys := make([]string, 0)
-	values := make([]string, 0)
+	var keys, values []string
 	for k, v := range parameters {
 		keys = append(keys, k)
 		values = append(values, v)
 	}
 
-	_, errExplore := tx.Exec(ctx, "call susers.find_neighbors_of_matching_entities($1, $2, $3, $4, $5, $6)", user, newId, periodStr, trait, keys, values)
+	_, errExplore := d.pool.Exec(ctx, "call susers.find_neighbors_of_matching_entities($1, $2, $3, $4, $5, $6)", user, newId, periodStr, trait, keys, values)
 	if errExplore != nil {
-		if err := tx.Rollback(ctx); err != nil {
-			globalErr = errors.Join(errExplore, err)
-		}
-
 		return empty, globalErr
 	}
 
 	// walkthrough done, load content
 	const queryEntities = "select * from susers.load_entities_from_walkthrough($1, $2)"
-	rowsEntities, errLoadEntities := tx.Query(ctx, queryEntities, newId, periodStr)
+	rowsEntities, errLoadEntities := d.pool.Query(ctx, queryEntities, newId, periodStr)
 	if errLoadEntities != nil {
 		globalErr = errors.Join(globalErr, errLoadEntities)
-		if err := tx.Rollback(ctx); err != nil {
-			globalErr = errors.Join(globalErr, err)
-		}
-
+		_, errClose := d.pool.Exec(ctx, "call susers.delete_values_for_walkthrough($1)", newId)
+		globalErr = errors.Join(globalErr, errClose)
 		return empty, globalErr
 	} else if errEntities := completeGraphWithEntitiesRows(rowsEntities, &result); errEntities != nil {
 		globalErr = errors.Join(globalErr, errEntities)
-		if err := tx.Rollback(ctx); err != nil {
-			globalErr = errors.Join(globalErr, err)
-		}
-
+		_, errClose := d.pool.Exec(ctx, "call susers.delete_values_for_walkthrough($1)", newId)
+		globalErr = errors.Join(globalErr, errClose)
 		return empty, globalErr
 	}
 
-	const queryRelations = "select * from susers.load_relations_from_walkthrough($1) "
-	if rowsRelation, errLoadRelation := tx.Query(ctx, queryRelations, newId); errLoadRelation != nil {
+	const queryRelations = "select * from susers.load_relations_from_walkthrough($1, $2) "
+	if rowsRelation, errLoadRelation := d.pool.Query(ctx, queryRelations, newId, periodStr); errLoadRelation != nil {
 		globalErr = errors.Join(globalErr, errLoadRelation)
-		if err := tx.Rollback(ctx); err != nil {
-			globalErr = errors.Join(globalErr, err)
-		}
-
+		_, errClose := d.pool.Exec(ctx, "call susers.delete_values_for_walkthrough($1)", newId)
+		globalErr = errors.Join(globalErr, errClose)
 		return empty, globalErr
 	} else if errRelation := completeGraphWithRelationsRows(rowsRelation, &result); errRelation != nil {
 		globalErr = errors.Join(globalErr, errRelation)
-		if err := tx.Rollback(ctx); err != nil {
-			globalErr = errors.Join(globalErr, err)
-		}
-
+		_, errClose := d.pool.Exec(ctx, "call susers.delete_values_for_walkthrough($1)", newId)
+		globalErr = errors.Join(globalErr, errClose)
 		return empty, globalErr
 	}
 
-	if _, err := tx.Exec(ctx, "call susers.delete_values_for_walkthrough($1)", newId); err != nil {
-		return result, err
-	}
-
-	return result, nil
+	_, errClose := d.pool.Exec(ctx, "call susers.delete_values_for_walkthrough($1)", newId)
+	globalErr = errors.Join(globalErr, errClose)
+	return result, globalErr
 }
 
 // UpsertElement adds an element to a given graph

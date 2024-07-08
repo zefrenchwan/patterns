@@ -117,29 +117,36 @@ begin
         select TAG.graph_id
         from temp_authorized_graphs TAG
 		where walkthrough_id = p_walkthrough_id
-    ), all_valid_elements as (
-        select ELT.element_id 
-        from temp_walkthroughs TWA 
-		join sgraphs.elements ELT on TWA.element_id = ELT.element_id
-        join all_authorized_graphs AAG on AAG.graph_id = ELT.graph_id
-    ), all_entities_to_delete as (
-		select TWA.element_id 
-		from temp_walkthroughs TWA
-		left outer join all_valid_elements AVE on AVE.element_id = TWA.element_id 
-		where AVE.element_id is null 
-	), all_relations_to_delete as (
-		select distinct TWA.element_id 
-		from temp_walkthroughs TWA
-		left outer join all_valid_elements AVE on AVE.element_id = TWA.relation_operand 
-		where AVE.element_id is null 
-	)
+    )
 	delete from temp_walkthroughs TWD
 	where TWD.element_id in (
-		select AED.element_id 
-		from all_entities_to_delete AED
-		UNION ALL 
-		select ARD.element_id 
-		from all_relations_to_delete ARD 
+	    select TWA.element_id 
+        from temp_walkthroughs TWA 
+		where not exists (
+			select 1 
+			from all_authorized_graphs AAG 
+			join sgraphs.elements ELT on TWA.element_id = ELT.element_id
+			where AAG.graph_id = ELT.graph_id 
+		)
+		and TWA.walkthrough_id = p_walkthrough_id
+	);
+
+	with all_authorized_graphs as (
+        select TAG.graph_id
+        from temp_authorized_graphs TAG
+		where walkthrough_id = p_walkthrough_id
+    )
+	delete from temp_walkthroughs TWD
+	where TWD.relation_operand in (
+    	select TWA.relation_operand 
+        from temp_walkthroughs TWA 
+		where not exists (
+			select 1 
+			from all_authorized_graphs AAG 
+			join sgraphs.elements ELT on TWA.relation_operand = ELT.element_id
+			where AAG.graph_id = ELT.graph_id 
+		)
+		and TWA.walkthrough_id = p_walkthrough_id
 	);
 
 
@@ -147,18 +154,29 @@ begin
         select TAG.graph_id
         from temp_authorized_graphs TAG
 		where walkthrough_id = p_walkthrough_id
-    ), all_candidates_relations as (
+    ), all_relations_around_elements as (
 		-- pick relations having one operand in the cleaned base table 
 		-- AND that are not already inserted.
 		-- This step loads relations which childs are valid entities. Done once.  
-		select distinct RRO.relation_id, RRO.role_in_relation as relation_role, 
-		RRV.relation_value, RRV.relation_period_id as link_period 
+		-- No need to check the activity, will be done later to reduce volumes. 
+		select distinct RRO.relation_id
 		from sgraphs.relation_role RRO
 		join sgraphs.relation_role_values RRV on RRV.relation_role_id = RRO.relation_role_id
 		join temp_walkthroughs TWA on TWA.element_id = RRV.relation_value -- operands are valid
-		left outer join temp_walkthroughs EXTWA on EXTWA.element_id = RRO.relation_id and EXTWA.walkthrough_id = TWA.walkthrough_id 
-		where EXTWA.element_id is null  -- to find new elements, not already inserted   
-		and TWA.walkthrough_id = p_walkthrough_id
+		where TWA.walkthrough_id = p_walkthrough_id
+		and not exists (
+			select 1 
+			from temp_walkthroughs EXTWA 
+			where EXTWA.element_id = RRO.relation_id 
+			and EXTWA.walkthrough_id = TWA.walkthrough_id  
+		)
+	), all_candidates_relations as (
+		-- load relations details of previously matching relations
+		select distinct RRO.relation_id, RRO.role_in_relation as relation_role, 
+		RRV.relation_value, RRV.relation_period_id as link_period 
+		from all_relations_around_elements ARAE
+		join sgraphs.relation_role RRO on RRO.relation_id = ARAE.relation_id
+		join sgraphs.relation_role_values RRV on RRV.relation_role_id = RRO.relation_role_id
 	), active_relations_with_operands as (
 		-- We do: 
 		-- NOT ask for operands to be active (for instance, X is the son of Y, and Y may not be active)
@@ -188,10 +206,12 @@ begin
 		)
 	), new_elements_to_insert as (
 		select ARWVO.relation_id, ARWVO.relation_role, ARWVO.relation_value 
-		from active_relations_with_visible_operands ARWVO 
-		left outer join temp_walkthroughs TWA on TWA.element_id = ARWVO.relation_id
-		and TWA.walkthrough_id = p_walkthrough_id
-		where TWA.element_id is null 
+		from active_relations_with_visible_operands ARWVO
+		where not exists (
+			select 1 from temp_walkthroughs TWA 
+			where TWA.element_id = ARWVO.relation_id
+			and TWA.walkthrough_id = p_walkthrough_id 
+		) 
 	)
 	insert into temp_walkthroughs(walkthrough_id,element_id, relation_role, relation_operand,height)
 	select p_walkthrough_id, NETI.relation_id, NETI.relation_role, NETI.relation_value, 0 
@@ -203,13 +223,14 @@ begin
 
 	-- then, add all relations and linked elements from visible graphs, 
 	-- that are childs of relations in previous walk. 
+	select 0 into l_current_height;
 	loop
 		-- test if no data was previously inserted 
 		select max(TW.height) into l_max_previous_height
 		from temp_walkthroughs TW 
 		where walkthrough_id = p_walkthrough_id;
 		-- exit when last walk did not insert more data
-		exit when l_max_previous_height < l_current_height;
+		exit when l_max_previous_height is null or l_max_previous_height < l_current_height;
 		select l_current_height + 1 into  l_current_height ;
 
 		with all_authorized_graphs as (
@@ -252,9 +273,12 @@ begin
 			-- from visible relations, get only relations that were not inserted
 			select AAVR.relation_id, AAVR.relation_role, AAVR.relation_value 
 			from all_active_visible_relations AAVR 
-			left outer join temp_walkthroughs TW on TW.element_id = AAVR.relation_id
-			where TW.element_id is null 
-			and TW.walkthrough_id = p_walkthrough_id
+			where not exists (
+				select 1 
+				from  temp_walkthroughs TW 
+				where TW.element_id = AAVR.relation_id
+				and TW.walkthrough_id = p_walkthrough_id
+			)
 		)
 		insert into temp_walkthroughs(walkthrough_id,element_id,relation_role, relation_operand,height)
 		select p_walkthrough_id, NVIR.relation_id, NVIR.relation_role, NVIR.relation_value, l_current_height 
@@ -266,7 +290,7 @@ end; $$;
 alter procedure susers.find_neighbors_for_walkthrough owner to upa;
 
 
-create or replace function susers.load_relations_from_walkthrough(p_walkthrough_id text)
+create or replace function susers.load_relations_from_walkthrough(p_walkthrough_id text, p_period_value text)
 returns table (
     graph_id text, editable bool, 
     element_id text, activity text, traits text[], 
@@ -274,6 +298,7 @@ returns table (
     role_in_relation text, role_values text[], role_periods text[]
 ) language plpgsql as $$
 begin 
+	return query
 	with all_authorized_graphs as (
         select TAG.graph_id, TAG.editable 
         from temp_authorized_graphs TAG
@@ -322,21 +347,21 @@ begin
 		and ELT.element_type in (2,10)
 		and TWA.relation_role is not null 
 	), all_relations_values as (
-		select AARFW.element_id, 
-		RRV.role_in_relation, 
+		select ARRFW.element_id, 
+		RRO.role_in_relation, 
 		array_agg(RRV.relation_value order by RRV.relation_period_id) as role_values, 
 		array_agg(PER.period_value) as role_periods
 		from all_relation_roles_from_walkthrough ARRFW 
-		join sgraphs.relation_role RRO on RRO.relation_id = ARRFW.relation_id
+		join sgraphs.relation_role RRO on RRO.relation_id = ARRFW.element_id
 		join sgraphs.relation_role_values RRV on RRV.relation_role_id = RRO.relation_role_id
 		join sgraphs.periods PER on PER.period_id = RRV.relation_period_id 
 		where ARRFW.relation_role = RRO.role_in_relation
-		and ARRFW.relation_value = RRV.relation_value
-		group by AARFW.element_id, RRV.role_in_relation 
+		and ARRFW.relation_operand = RRV.relation_value
+		group by ARRFW.element_id, RRO.role_in_relation 
 	)
 	select 
 	ARMD.graph_id, ARMD.editable, 
-    ARMD.element_id, ARMD.activity, ART.traits, 
+    ARMD.element_id, ARMD.period_value, ART.traits, 
     AEQ.equivalence_parent , AEQ.equivalence_parent_graph ,
     ARV.role_in_relation , ARV.role_values , ARV.role_periods 
 	from all_relations_main_data ARMD 
@@ -388,12 +413,12 @@ begin
 		join sgraphs.traits TRA on TRA.trait_id = ETR.trait_id 
 		group by AEMD.element_id
 	), all_entities_attributes as (
-		select AEMD.element_id, EAT.attribute_name, 
+		select AEMD.element_id, EAT.attribute_name as attribute_key, 
 		array_agg(EAT.attribute_value order by attribute_id) as attribute_values, 
 		array_agg(PER.period_value order by attribute_id) as attribute_periods
 		from all_entities_main_data AEMD
-		join susers.entity_attributes EAT on EAT.entity_id = AEMD.element_id 
-		join susers.periods PER on PER.period_id = EAT.period_id 
+		join sgraphs.entity_attributes EAT on EAT.entity_id = AEMD.element_id 
+		join sgraphs.periods PER on PER.period_id = EAT.period_id 
 		where (
 			-- either entity is not active and load it all (X loves socrate)
 			-- or entity is active and load only relevant data 

@@ -95,7 +95,7 @@ func findElementDuringPeriodHandler(wrapper ServiceParameters, w http.ResponseWr
 	}
 
 	// then, pass to dao
-	graph, errLoad := wrapper.Dao.FindNeighborsOfMatchingElements(wrapper.Ctx, user, period, trait, parameters)
+	graph, errLoad := wrapper.Dao.FindNeighborsOfMatchingEntities(wrapper.Ctx, user, period, trait, parameters)
 	if errLoad != nil {
 		return NewServiceInternalServerError(errLoad.Error())
 	}
