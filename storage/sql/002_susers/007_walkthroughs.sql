@@ -422,7 +422,7 @@ begin
 		where (
 			-- either entity is not active and load it all (X loves socrate)
 			-- or entity is active and load only relevant data 
-			not AEMD.is_active or sgraphs.are_periods_disjoin(PER.period_value, p_period_value)
+			not AEMD.is_active or not sgraphs.are_periods_disjoin(PER.period_value, p_period_value)
 		)
 		group by AEMD.element_id, EAT.attribute_name
 	), all_equivalences as (
