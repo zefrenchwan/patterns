@@ -580,6 +580,68 @@ end;$$;
 
 alter function susers.load_element_by_id owner to upa;
 
+-- susers.graphs_dynamic_import adds, if possible, an imported graph to source. 
+-- In practice, reload the source graph to see new nodes.
+create or replace procedure susers.graphs_dynamic_import(p_user_login text, p_source_graph_id text, p_graph_to_import text)
+language plpgsql as $$
+declare 
+	l_user_id text;
+	l_editable bool;
+begin 
+	-- test user and find matching id for authorized graphs
+	select user_id into l_user_id 
+	from susers.users 
+	where user_login = p_user_login 
+	and user_active = true;
+
+	if l_user_id is null then 
+		raise exception 'no matching user for %', p_user_login using errcode = '42704';
+	end if;
+	
+	-- test if base graph exists and may be modified 
+	select editable into l_editable 
+	from susers.authorized_graphs
+	where auth_user_id = l_user_id
+	and graph_id = p_source_graph_id;
+
+	if l_editable is null or not l_editable then 
+		raise exception 'source graph does not exist or cannot be modified' using errcode = '42704';
+	end if;
+
+	-- test if imported graph exists and is visible
+	select editable into l_editable 
+	from susers.authorized_graphs
+	where auth_user_id = l_user_id
+	and graph_id = p_graph_to_import;
+
+	if l_editable is null then 
+		raise exception 'imported graph does not exist or cannot be used' using errcode = '42704';
+	end if;
+
+	-- if source appears in graph dependencies, it creates a cycle
+	-- graph -- parent --> source -- to add --> graph as dependency
+	if exists (
+		select 1 
+		from susers.transitive_visible_graphs_since(p_user_login, p_graph_to_import)
+		where graph_id = p_source_graph_id
+	) then 
+		raise exception 'importing graph would create cycles' using errcode = '42P19';
+	end if;
+
+	-- operation is valid, but it may include a graph already in dependencies. 
+	-- Condition is: if the graph to import is already in the dependecies of the source graph
+	-- Then do nothing. Otherwise, just add it
+	if not exists (
+		select 1 
+		from susers.transitive_visible_graphs_since(p_user_login,  p_source_graph_id)
+		where graph_id = p_graph_to_import
+	) then 
+        -- insert the graph to import AS A SOURCE of the base graph (and not the other way around)
+		insert into sgraphs.inclusions(source_id, child_id) values (p_graph_to_import, p_source_graph_id);
+	end if;
+end; $$;
+
+alter procedure susers.graphs_dynamic_import owner to upa;
 
 -- susers.create_equivalent_element_into_graph creates an equivalent node in a graph
 create or replace procedure susers.create_equivalent_element_into_graph(

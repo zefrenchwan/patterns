@@ -47,6 +47,26 @@ func createGraphHandler(wrapper ServiceParameters, w http.ResponseWriter, r *htt
 	return nil
 }
 
+// addImportToExistingGraphHandler adds an import into an existing graph
+func addImportToExistingGraphHandler(wrapper ServiceParameters, w http.ResponseWriter, r *http.Request) error {
+	defer r.Body.Close()
+
+	user, auth := wrapper.CurrentUser()
+	if !auth {
+		return NewServiceForbiddenError("should authenticate")
+	}
+
+	baseGraphId := r.PathValue("baseGraph")
+	importGraphId := r.PathValue("importGraph")
+
+	if err := wrapper.Dao.AddNewImportForGraph(wrapper.Ctx, user, baseGraphId, importGraphId); err != nil {
+		return BuildApiErrorFromStorageError(err)
+	}
+
+	w.WriteHeader(200)
+	return nil
+}
+
 // upsertElementInGraphHandler loads an element dto and then saves it to database
 func deleteGraphHandler(wrapper ServiceParameters, w http.ResponseWriter, r *http.Request) error {
 	defer r.Body.Close()

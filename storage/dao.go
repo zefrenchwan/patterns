@@ -750,6 +750,22 @@ func (d *Dao) CreateEquivalentElement(ctx context.Context, user string, elementS
 	return errUpsertElement
 }
 
+// AddNewImportForGraph adds a new imported graph to an existing graph.
+// For instance, user creates an empty graph, then needs to import a graph in it
+func (d *Dao) AddNewImportForGraph(ctx context.Context, user string, baseGraph, newImportGraph string) error {
+	if d == nil || d.pool == nil {
+		return errors.New("nil value")
+	}
+
+	_, errUpsertElement := d.pool.Exec(
+		ctx,
+		"call susers.graphs_dynamic_import($1, $2, $3)",
+		user, baseGraph, newImportGraph,
+	)
+
+	return errUpsertElement
+}
+
 // ClearGraph clear the whole graphs schema
 func (d *Dao) ClearGraph(ctx context.Context, user string) error {
 	if d == nil || d.pool == nil {

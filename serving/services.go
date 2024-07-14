@@ -46,6 +46,7 @@ func InitService(dao storage.Dao, initialContext context.Context, logger *zap.Su
 	AddAuthenticatedPostServiceHandlerToMux(mux, "/user/upsert/", upsertUserHandler, parameters)
 	// GRAPHS OPERATIONS
 	AddAuthenticatedPostServiceHandlerToMux(mux, "/graph/create/", createGraphHandler, parameters)
+	AddAuthenticatedGetServiceHandlerToMux(mux, "/graph/import/{importGraph}/into/{baseGraph}/", addImportToExistingGraphHandler, parameters)
 	AddAuthenticatedGetServiceHandlerToMux(mux, "/graph/delete/{graphId}/", deleteGraphHandler, parameters)
 	AddAuthenticatedGetServiceHandlerToMux(mux, "/graph/list/", listGraphHandler, parameters)
 	AddAuthenticatedGetServiceHandlerToMux(mux, "/graph/load/{graphId}/", loadGraphHandler, parameters)
