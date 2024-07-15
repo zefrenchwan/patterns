@@ -46,19 +46,19 @@ func InitService(dao storage.Dao, initialContext context.Context, logger *zap.Su
 	AddAuthenticatedPostServiceHandlerToMux(mux, "/user/upsert/", upsertUserHandler, parameters)
 	// GRAPHS OPERATIONS
 	AddAuthenticatedPostServiceHandlerToMux(mux, "/graph/create/", createGraphHandler, parameters)
-	AddAuthenticatedGetServiceHandlerToMux(mux, "/graph/import/{importGraph}/into/{baseGraph}/", addImportToExistingGraphHandler, parameters)
-	AddAuthenticatedGetServiceHandlerToMux(mux, "/graph/delete/{graphId}/", deleteGraphHandler, parameters)
+	AddAuthenticatedPutServiceHandlerToMux(mux, "/graph/import/{importGraph}/into/{baseGraph}/", addImportToExistingGraphHandler, parameters)
+	AddAuthenticatedDeleteServiceHandlerToMux(mux, "/graph/delete/{graphId}/", deleteGraphHandler, parameters)
 	AddAuthenticatedGetServiceHandlerToMux(mux, "/graph/list/", listGraphHandler, parameters)
 	AddAuthenticatedGetServiceHandlerToMux(mux, "/graph/load/{graphId}/", loadGraphHandler, parameters)
 	AddAuthenticatedGetServiceHandlerToMux(mux, "/graph/slice/{graphId}/since/{moment}/", loadGraphSinceHandler, parameters)
 	AddAuthenticatedGetServiceHandlerToMux(mux, "/graph/slice/{graphId}/between/{start}/and/{end}/", loadGraphBetweenHandler, parameters)
 	AddAuthenticatedGetServiceHandlerToMux(mux, "/graph/snapshot/{graphId}/at/{moment}/", snapshotGraphHandler, parameters)
-	AddAuthenticatedGetServiceHandlerToMux(mux, "/graph/all/clear/", clearGraphsHandler, parameters)
+	AddAuthenticatedDeleteServiceHandlerToMux(mux, "/graph/all/clear/", clearGraphsHandler, parameters)
 	// ELEMENTS OPERATIONS
-	AddAuthenticatedGetServiceHandlerToMux(mux, "/elements/copy/{elementId}/to/{graphId}/", createEquivalenceElementHandler, parameters)
+	AddAuthenticatedPutServiceHandlerToMux(mux, "/elements/copy/{elementId}/to/{graphId}/", createEquivalenceElementHandler, parameters)
 	AddAuthenticatedGetServiceHandlerToMux(mux, "/elements/load/{elementId}/", loadElementByIdHandler, parameters)
 	AddAuthenticatedPostServiceHandlerToMux(mux, "/elements/upsert/graph/{graphId}/", upsertElementInGraphHandler, parameters)
-	AddAuthenticatedGetServiceHandlerToMux(mux, "/elements/delete/{elementId}/", deleteElementHandler, parameters)
+	AddAuthenticatedDeleteServiceHandlerToMux(mux, "/elements/delete/{elementId}/", deleteElementHandler, parameters)
 	// LOCAL FIND OPERATIONS
 	AddAuthenticatedGetServiceHandlerToMux(mux, "/find/neighbors/of/entities/for/trait/{trait}/", findElementFullPeriodHandler, parameters)
 	AddAuthenticatedGetServiceHandlerToMux(mux, "/find/neighbors/of/entities/for/trait/{trait}/since/{start}/", findElementSinceHandler, parameters)
@@ -87,6 +87,16 @@ func AddAuthenticatedGetServiceHandlerToMux(mux *http.ServeMux, urlPattern strin
 // AddAuthenticatedPostServiceHandlerToMux adds an handler to to the current mux for a POST
 func AddAuthenticatedPostServiceHandlerToMux(mux *http.ServeMux, urlPattern string, handler ServiceHandler, parameters ServiceParameters) {
 	AddServiceHandlerToMux(mux, "POST", urlPattern, true, handler, parameters)
+}
+
+// AddAuthenticatedDeleteServiceHandlerToMux adds an handler to the current mux for a DELETE
+func AddAuthenticatedDeleteServiceHandlerToMux(mux *http.ServeMux, urlPattern string, handler ServiceHandler, parameters ServiceParameters) {
+	AddServiceHandlerToMux(mux, "DELETE", urlPattern, true, handler, parameters)
+}
+
+// AddAuthenticatedPutServiceHandlerToMux adds an handler to the current mux for a PUT
+func AddAuthenticatedPutServiceHandlerToMux(mux *http.ServeMux, urlPattern string, handler ServiceHandler, parameters ServiceParameters) {
+	AddServiceHandlerToMux(mux, "PUT", urlPattern, true, handler, parameters)
 }
 
 // AddServiceHandlerToMux adds an handler to current mux
