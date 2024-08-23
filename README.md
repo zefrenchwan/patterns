@@ -75,3 +75,9 @@ Use procedures to insert users.
 For instance (pay attention to password, change it): 
 * call susers.insert_user('root','password so secret that no one would find it');
 * call susers.insert_super_user_roles('root'); 
+
+
+## Testing 
+
+1. Some unit tests, in packages with a `_test` suffix. It validates basic and local behavior
+2. Some end to end tests. Assuming the api is up, database is up, python code launches tests. This code is located in `tests` folder
