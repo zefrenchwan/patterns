@@ -66,7 +66,8 @@ The project contains:
 
 1. `go build` to build the application 
 2. launch scripts in `storage/sql`. Execute sql data definition then procedures creations
-3. launch go built application
+3. define `PATTERNS_PORT` as the port to open to access the api, and `PATTERNS_DB_URL` to connect the database (postgresql)
+4. launch go built application
 
 ### Create first users
 
