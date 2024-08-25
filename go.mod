@@ -1,13 +1,13 @@
 module github.com/zefrenchwan/patterns.git
 
-go 1.22.0
+go 1.23.0
 
 require (
-	github.com/google/uuid v1.6.0 // direct
-	go.uber.org/zap v1.27.0 // direct
-	github.com/jackc/pgx/v5 v5.5.5 // direct
 	github.com/golang-jwt/jwt/v5 v5.2.1 // direct
-)	
+	github.com/google/uuid v1.6.0 // direct
+	github.com/jackc/pgx/v5 v5.5.5 // direct
+	go.uber.org/zap v1.27.0 // direct
+)
 
 require (
 	github.com/jackc/pgpassfile v1.0.0 // indirect
